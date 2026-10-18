@@ -1,0 +1,134 @@
+version: "1.0"
+type: component
+data:
+  name: omv-services-filemanager-shares-datatable-page
+  type: datatablePage
+  config:
+    autoReload: false
+    hasSearchField: true
+    rowId: uuid
+    stateId: 5f3a7c10-5f2e-11ef-9a1b-abcdef012301
+    sorters:
+      - dir: asc
+        prop: name
+    store:
+      proxy:
+        service: FileManager
+        get:
+          method: getSharedFolderList
+    columns:
+      - name: _("Shared folder")
+        prop: name
+        flexGrow: 2
+        sortable: true
+      - name: _("Comment")
+        prop: comment
+        flexGrow: 3
+        sortable: true
+      - name: _("Access")
+        prop: access
+        flexGrow: 1
+        sortable: true
+        cellTemplateName: chip
+        cellTemplateConfig:
+          map:
+            rw:
+              value: _("Read/Write")
+            ro:
+              value: _("Read-only")
+    actions:
+      - type: iconButton
+        icon: mdi:folder-open-outline
+        tooltip: _("Open")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+        execute:
+          type: url
+          url: "/services/filemanager/browse/{{ _selected[0].uuid }}/{{ _selected[0].path }}"
+      - type: iconButton
+        icon: mdi:file-tree
+        tooltip: _("Browse as tree")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+        execute:
+          type: url
+          url: "/services/filemanager/browse/{{ _selected[0].uuid }}"
+      - type: iconButton
+        icon: mdi:upload
+        tooltip: _("Upload files")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+          constraint:
+            - operator: eq
+              arg0:
+                prop: access
+              arg1: rw
+        execute:
+          type: url
+          url: "/externalRedirect/{{ ('filemanager-upload.php?uuid=' ~ _selected[0].uuid ~ '&path=root') | encodeuricomponent }}"
+      - type: iconButton
+        icon: mdi:magnify
+        tooltip: _("Search")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+        execute:
+          type: formDialog
+          formDialog:
+            title: _("Search")
+            fields:
+              - type: hidden
+                name: uuid
+                value: "{{ _selected[0].uuid }}"
+              - type: textInput
+                name: query
+                label: _("Name")
+                hint: _("Part of the name, case-insensitive. Wildcards (* and ?) are supported.")
+                validators:
+                  required: true
+            buttons:
+              submit:
+                text: _("Search")
+                execute:
+                  type: url
+                  url: "/services/filemanager/search/{{ uuid }}/root/{{ query | encodeuricomponent }}"
+      - type: menu
+        icon: mdi:delete-restore
+        tooltip: _("Trash")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+        actions:
+          - text: _("Open trash")
+            icon: mdi:delete-outline
+            enabledConstraints:
+              minSelected: 1
+              maxSelected: 1
+            execute:
+              type: url
+              url: "/services/filemanager/browse/{{ _selected[0].uuid }}/{{ _selected[0].trashpath }}"
+          - text: _("Empty trash")
+            icon: mdi:delete-empty-outline
+            enabledConstraints:
+              minSelected: 1
+              maxSelected: 1
+              constraint:
+                - operator: eq
+                  arg0:
+                    prop: access
+                  arg1: rw
+            confirmationDialogConfig:
+              template: confirmation-danger
+              message: _("Do you really want to permanently delete all items in the trash of '{{ _selected[0].name }}'?")
+            execute:
+              type: request
+              request:
+                service: FileManager
+                method: emptyTrash
+                params:
+                  uuid: "{{ uuid }}"
+                progressMessage: _("Emptying trash ...")
+                successNotification: _("Trash emptied.")

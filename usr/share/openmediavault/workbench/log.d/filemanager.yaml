@@ -1,0 +1,31 @@
+version: "1.0"
+type: log
+data:
+  id: filemanager
+  text: _("File Manager")
+  columns:
+    - name: _("Date & Time")
+      sortable: true
+      prop: ts
+      cellTemplateName: localeDateTime
+      flexGrow: 1
+    - name: _("User")
+      sortable: true
+      prop: user
+      flexGrow: 1
+    - name: _("Action")
+      sortable: true
+      prop: action
+      flexGrow: 1
+    - name: _("Details")
+      sortable: true
+      prop: message
+      flexGrow: 4
+  sorters:
+    - dir: desc
+      prop: ts
+  request:
+    service: LogFile
+    method: getList
+    params:
+      id: filemanager

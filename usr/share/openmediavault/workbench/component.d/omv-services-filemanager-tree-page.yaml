@@ -1,0 +1,252 @@
+version: "1.0"
+type: component
+data:
+  name: omv-services-filemanager-tree-page
+  type: datatablePage
+  config:
+    autoReload: false
+    hasSearchField: true
+    rowId: path
+    rowEnumFmt: "{{ name }}"
+    stateId: bf272779-b5ae-48ce-a26a-446979aabc5c
+    selectionType: multi
+    # Disable paging, it would split the tree.
+    limit: 0
+    treeFromRelation: parent
+    treeToRelation: path
+    store:
+      proxy:
+        service: FileManager
+        get:
+          method: getList
+          params:
+            uuid: "{{ _routeParams.uuid }}"
+            # `_parent` is the row being expanded; it is undefined for
+            # the top level rows.
+            path: "{{ _parent.path | default('root') }}"
+      # getList injects a ".." entry for the flat view; a tree does not
+      # need it.
+      filters:
+        - operator: ne
+          arg0:
+            prop: type
+          arg1: parentdir
+      # 'dir' sorts before 'file', so folders are listed first.
+      sorters:
+        - prop: type
+          dir: asc
+        - prop: name
+          dir: asc
+      transform:
+        treeStatus: "{{ 'collapsed' if type == 'dir' else 'disabled' }}"
+    columns:
+      - name: _("Name")
+        prop: name
+        flexGrow: 4
+        sortable: true
+        isTreeColumn: true
+        treeLevelIndent: 24
+      - name: _("Size")
+        prop: size
+        flexGrow: 1
+        sortable: true
+        cellTemplateName: template
+        cellTemplateConfig: "{{ '' if size < 0 else (size | tobytes | binaryunit) }}"
+      - name: _("Modified")
+        prop: mtime
+        flexGrow: 2
+        sortable: true
+        cellTemplateName: localeDateTime
+      - name: _("Owner")
+        prop: owner
+        flexGrow: 1
+        sortable: true
+        hidden: true
+        cellTemplateName: template
+        cellTemplateConfig: '{{ owner }}{{ ":" ~ group if group }}'
+      - name: _("Permissions")
+        prop: mode
+        flexGrow: 1
+    actions:
+      - type: iconButton
+        icon: mdi:file-edit-outline
+        tooltip: _("Edit")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+          constraint:
+            - operator: truthy
+              arg0:
+                prop: editable
+        execute:
+          type: url
+          url: "/services/filemanager/edit/{{ _routeParams.uuid }}/{{ _selected[0].dirpath }}/{{ _selected[0].path }}"
+      - type: iconButton
+        icon: mdi:eye-outline
+        tooltip: _("Preview")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+          constraint:
+            - operator: truthy
+              arg0:
+                prop: preview
+        execute:
+          type: url
+          url: '/externalRedirect/{{ (''download.php?service=FileManager&method=preview&params={"uuid":"'' ~ _routeParams.uuid ~ ''","path":"'' ~ path ~ ''"}'') | encodeuricomponent }}'
+      - type: iconButton
+        icon: mdi:download
+        tooltip: _("Download")
+        enabledConstraints:
+          minSelected: 1
+        execute:
+          type: url
+          url: '/download?service=FileManager&method={{ "download" if (_selected | length) == 1 else "downloadArchive" }}&params={"uuid":"{{ _routeParams.uuid }}","path":"{{ _selected[0].path }}","paths":"{{ _selected | join(",", "path") }}"}'
+      - type: menu
+        icon: add
+        tooltip: _("Create")
+        actions:
+          # The following actions work inside the selected folder, or at
+          # the top level if nothing is selected.
+          - text: _("Upload files")
+            icon: mdi:upload
+            enabledConstraints:
+              maxSelected: 1
+              constraint:
+                - operator: eq
+                  arg0:
+                    prop: type
+                  arg1: dir
+            execute:
+              type: url
+              url: "/externalRedirect/{{ ('filemanager-upload.php?uuid=' ~ _routeParams.uuid ~ '&path=' ~ (_selected[0].path if (_selected | length) else 'root')) | encodeuricomponent }}"
+          - text: _("New folder")
+            icon: mdi:folder-plus-outline
+            enabledConstraints:
+              maxSelected: 1
+              constraint:
+                - operator: eq
+                  arg0:
+                    prop: type
+                  arg1: dir
+            execute:
+              type: formDialog
+              formDialog:
+                title: _("New folder")
+                fields:
+                  # Submit buttons only see the form values, so the
+                  # target is passed via hidden fields.
+                  - type: hidden
+                    name: uuid
+                    value: "{{ _routeParams.uuid }}"
+                  - type: hidden
+                    name: path
+                    value: "{{ _selected[0].path if (_selected | length) else 'root' }}"
+                  - type: textInput
+                    name: name
+                    label: _("Name")
+                    validators:
+                      required: true
+                buttons:
+                  submit:
+                    text: _("Create")
+                    execute:
+                      type: request
+                      request:
+                        service: FileManager
+                        method: mkDir
+                        successNotification: _("Folder created.")
+          - text: _("New file")
+            icon: mdi:file-plus-outline
+            enabledConstraints:
+              maxSelected: 1
+              constraint:
+                - operator: eq
+                  arg0:
+                    prop: type
+                  arg1: dir
+            execute:
+              type: formDialog
+              formDialog:
+                title: _("New file")
+                fields:
+                  - type: hidden
+                    name: uuid
+                    value: "{{ _routeParams.uuid }}"
+                  - type: hidden
+                    name: path
+                    value: "{{ _selected[0].path if (_selected | length) else 'root' }}"
+                  - type: textInput
+                    name: name
+                    label: _("Name")
+                    validators:
+                      required: true
+                buttons:
+                  submit:
+                    text: _("Create")
+                    execute:
+                      type: request
+                      request:
+                        service: FileManager
+                        method: mkFile
+                        successNotification: _("File created.")
+      - type: iconButton
+        icon: mdi:rename-box
+        tooltip: _("Rename")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+        execute:
+          type: formDialog
+          formDialog:
+            title: _("Rename")
+            fields:
+              - type: hidden
+                name: uuid
+                value: "{{ _routeParams.uuid }}"
+              - type: hidden
+                name: path
+                value: "{{ _selected[0].path }}"
+              - type: textInput
+                name: name
+                label: _("New name")
+                value: "{{ _selected[0].name }}"
+                validators:
+                  required: true
+            buttons:
+              submit:
+                text: _("Rename")
+                execute:
+                  type: request
+                  request:
+                    service: FileManager
+                    method: rename
+                    successNotification: _("Renamed.")
+      - type: iconButton
+        icon: mdi:information-outline
+        tooltip: _("Properties")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+        execute:
+          type: taskDialog
+          taskDialog:
+            config:
+              title: _("Properties")
+              startOnInit: true
+              request:
+                service: FileManager
+                method: getProperties
+                params:
+                  uuid: "{{ _routeParams.uuid }}"
+                  path: "{{ _selected[0].path }}"
+      # Moves the items to the trash (if enabled); asks for confirmation.
+      - template: delete
+        execute:
+          type: request
+          request:
+            service: FileManager
+            method: delete
+            params:
+              uuid: "{{ _routeParams.uuid }}"
+              path: "{{ path }}"

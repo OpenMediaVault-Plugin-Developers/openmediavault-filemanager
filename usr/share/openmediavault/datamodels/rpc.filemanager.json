@@ -1,0 +1,476 @@
+[
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.getlist",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "path": {
+          "type": "string",
+          "required": true
+        },
+        "start": {
+          "type": "integer",
+          "required": true
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "required": true
+        },
+        "sortfield": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sortdir": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "asc",
+            "ASC",
+            "desc",
+            "DESC"
+          ]
+        },
+        "search": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.search",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "path": {
+          "type": "string",
+          "required": true
+        },
+        "start": {
+          "type": "integer",
+          "required": true
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "required": true
+        },
+        "sortfield": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sortdir": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "asc",
+            "ASC",
+            "desc",
+            "DESC"
+          ]
+        },
+        "search": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "query": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.uuid",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.path",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "path": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.paths",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "paths": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.mkdir",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "path": {
+          "type": "string",
+          "required": true
+        },
+        "name": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.rename",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "path": {
+          "type": "string",
+          "required": true
+        },
+        "name": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.delete",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "path": {
+          "type": "string",
+          "required": true
+        },
+        "permanent": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.setcontent",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "path": {
+          "type": "string",
+          "required": true
+        },
+        "content": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.uploadchunk",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "path": {
+          "type": "string",
+          "required": true
+        },
+        "name": {
+          "type": "string",
+          "required": true
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "required": true
+        },
+        "final": {
+          "type": "boolean",
+          "required": true
+        },
+        "overwrite": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "required": true
+        },
+        "filepath": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.transfer",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "paths": {
+          "type": "string",
+          "required": true
+        },
+        "destuuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "destpath": {
+          "type": "string",
+          "required": true
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "copy",
+            "move"
+          ],
+          "required": true
+        },
+        "overwrite": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.chmod",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "paths": {
+          "type": "string",
+          "required": true
+        },
+        "mode": {
+          "type": "string",
+          "pattern": "^[0-7]{3,4}$",
+          "required": true
+        },
+        "recursive": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.chown",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "paths": {
+          "type": "string",
+          "required": true
+        },
+        "owner": {
+          "type": "string",
+          "required": true
+        },
+        "group": {
+          "type": "string",
+          "required": true
+        },
+        "recursive": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.compress",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "paths": {
+          "type": "string",
+          "required": true
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "required": true
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "zip",
+            "tar.gz"
+          ],
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.setsettings",
+    "params": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "required": true
+        },
+        "readonly": {
+          "type": "boolean",
+          "required": true
+        },
+        "showhidden": {
+          "type": "boolean",
+          "required": true
+        },
+        "maxeditsize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "required": true
+        },
+        "sharedfolders": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuidv4"
+          },
+          "required": true
+        },
+        "usetrash": {
+          "type": "boolean",
+          "required": true
+        },
+        "auditlog": {
+          "type": "boolean",
+          "required": true
+        },
+        "allowusers": {
+          "type": "boolean",
+          "required": true
+        }
+      }
+    }
+  }
+]

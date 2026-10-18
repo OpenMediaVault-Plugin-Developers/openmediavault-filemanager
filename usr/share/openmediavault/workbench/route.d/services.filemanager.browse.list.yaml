@@ -1,0 +1,6 @@
+version: "1.0"
+type: route
+data:
+  url: "/services/filemanager/browse"
+  title: _("Shared folders")
+  component: omv-services-filemanager-shares-datatable-page

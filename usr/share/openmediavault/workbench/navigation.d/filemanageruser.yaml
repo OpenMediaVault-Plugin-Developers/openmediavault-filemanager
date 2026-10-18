@@ -1,0 +1,11 @@
+# Entry for non-administrative users, see the "Allow access" setting.
+version: "1.0"
+type: navigation-item
+data:
+  path: "filemanageruser"
+  text: _("File Manager")
+  icon: "mdi:folder-cog-outline"
+  url: "/services/filemanager/browse"
+  permissions:
+    role:
+      - user

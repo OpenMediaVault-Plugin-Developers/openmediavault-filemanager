@@ -1,0 +1,8 @@
+version: "1.0"
+type: navigation-item
+data:
+  path: "services.filemanager.settings"
+  text: _("Settings")
+  position: 20
+  icon: "mdi:cog-outline"
+  url: "/services/filemanager/settings"

@@ -1,0 +1,8 @@
+version: "1.0"
+type: navigation-item
+data:
+  path: "services.filemanager.browse"
+  text: _("Shared folders")
+  position: 10
+  icon: "mdi:folder-network-outline"
+  url: "/services/filemanager/browse"

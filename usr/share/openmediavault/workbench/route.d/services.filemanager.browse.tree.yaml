@@ -1,0 +1,6 @@
+version: "1.0"
+type: route
+data:
+  url: "/services/filemanager/browse/:uuid"
+  title: _("Browse")
+  component: omv-services-filemanager-tree-page

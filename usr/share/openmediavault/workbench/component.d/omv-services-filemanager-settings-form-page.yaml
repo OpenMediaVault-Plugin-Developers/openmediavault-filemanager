@@ -1,0 +1,69 @@
+version: "1.0"
+type: component
+data:
+  name: omv-services-filemanager-settings-form-page
+  type: formPage
+  config:
+    request:
+      service: FileManager
+      get:
+        method: getSettings
+      post:
+        method: setSettings
+    fields:
+      - type: checkbox
+        name: enable
+        label: _("Enabled")
+        value: true
+      - type: checkbox
+        name: readonly
+        label: _("Read-only")
+        hint: _("Only allow browsing, previewing and downloading.")
+        value: false
+      - type: select
+        name: sharedfolders
+        label: _("Shared folders")
+        hint: _("The shared folders available in the file manager. Select none to make all shared folders available.")
+        multiple: true
+        value: []
+        valueField: uuid
+        textField: name
+        store:
+          proxy:
+            service: FileManager
+            get:
+              method: enumerateSharedFolders
+          sorters:
+            - dir: asc
+              prop: name
+      - type: checkbox
+        name: showhidden
+        label: _("Show hidden files")
+        hint: _("Show files and folders whose name starts with a dot.")
+        value: true
+      - type: numberInput
+        name: maxeditsize
+        label: _("Editor size limit")
+        hint: _("Maximum size in MiB of files that can be opened in the editor.")
+        value: 2
+        validators:
+          required: true
+          min: 1
+          max: 64
+      - type: checkbox
+        name: usetrash
+        label: _("Use trash")
+        hint: _("Move deleted items to the '.recycle' folder of the shared folder instead of deleting them permanently. This is the same folder the Samba recycle bin uses.")
+        value: true
+      - type: checkbox
+        name: auditlog
+        label: _("Audit log")
+        hint: _("Log every change (who, what, where) to the system journal. Shown under Diagnostics | System Logs | File Manager.")
+        value: true
+      - type: divider
+        title: _("Non-administrative users")
+      - type: checkbox
+        name: allowusers
+        label: _("Allow access")
+        hint: _("Let users that log in to the web interface browse the shared folders according to their shared folder privileges (read-only or read/write). Changing permissions and owners stays restricted to administrators.")
+        value: false

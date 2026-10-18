@@ -1,0 +1,43 @@
+version: "1.0"
+type: component
+data:
+  name: omv-services-filemanager-edit-form-page
+  type: formPage
+  config:
+    request:
+      service: FileManager
+      get:
+        method: getFileContent
+        params:
+          uuid: "{{ _routeParams.uuid }}"
+          path: "{{ _routeParams.path }}"
+      post:
+        method: setFileContent
+    fields:
+      # Hidden fields carry the target back to setFileContent on submit.
+      - type: hidden
+        name: uuid
+        value: "{{ _routeParams.uuid }}"
+      - type: hidden
+        name: path
+        value: "{{ _routeParams.path }}"
+      - type: textInput
+        name: location
+        label: _("File")
+        readonly: true
+        submitValue: false
+      - type: codeEditor
+        name: content
+        label: _("Content")
+        language: shell
+        value: ""
+    buttons:
+      # Both return to the folder that contains the file.
+      - template: submit
+        execute:
+          type: url
+          url: "/services/filemanager/browse/{{ _routeParams.uuid }}/{{ _routeParams.parent }}"
+      - template: cancel
+        execute:
+          type: url
+          url: "/services/filemanager/browse/{{ _routeParams.uuid }}/{{ _routeParams.parent }}"

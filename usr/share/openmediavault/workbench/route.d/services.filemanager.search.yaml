@@ -1,0 +1,8 @@
+version: "1.0"
+type: route
+data:
+  url: "/services/filemanager/search/:uuid/:path/:query"
+  title: _("Search")
+  breadcrumb:
+    text: '{{ "Search" | translate }} "{{ _routeParams.query }}"'
+  component: omv-services-filemanager-search-datatable-page

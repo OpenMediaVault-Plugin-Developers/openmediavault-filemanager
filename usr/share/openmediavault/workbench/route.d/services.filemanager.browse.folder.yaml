@@ -1,0 +1,14 @@
+version: "1.0"
+type: route
+data:
+  url: "/services/filemanager/browse/:uuid/:path"
+  title: _("Browse")
+  breadcrumb:
+    text: "{{ sharename }}:{{ location }}"
+    request:
+      service: FileManager
+      method: getLocation
+      params:
+        uuid: "{{ _routeParams.uuid }}"
+        path: "{{ _routeParams.path }}"
+  component: omv-services-filemanager-browse-datatable-page

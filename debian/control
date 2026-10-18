@@ -1,0 +1,22 @@
+Source: openmediavault-filemanager
+Section: net
+XB-Plugin-Section: utilities
+Priority: optional
+Maintainer: OpenMediaVault Plugin Developers <plugins@omv-extras.org>
+Build-Depends: debhelper-compat (= 14), dh-sequence-single-binary
+Standards-Version: 4.7.2
+Homepage: http://omv-extras.org/
+
+Package: openmediavault-filemanager
+Architecture: all
+Depends: openmediavault (>= 8.5.12),
+         acl,
+         file,
+         php-zip,
+         ${misc:Depends}
+Description: OpenMediaVault native file manager plugin
+ A native file manager built entirely on the OpenMediaVault declarative
+ workbench framework. Browse, search, preview, edit, upload, download,
+ copy, move, compress and extract files within shared folders, with a
+ trash, permission management and an audit log, without any external
+ application.

@@ -1,0 +1,7 @@
+version: "1.0"
+type: navigation-item
+data:
+  path: "services.filemanager"
+  text: _("File Manager")
+  icon: "mdi:folder-cog-outline"
+  url: "/services/filemanager"

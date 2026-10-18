@@ -1,0 +1,16 @@
+version: "1.0"
+type: route
+data:
+  url: "/services/filemanager/edit/:uuid/:parent/:path"
+  title: _("Edit")
+  breadcrumb:
+    text: "{{ sharename }}:{{ location }}"
+    request:
+      service: FileManager
+      method: getLocation
+      params:
+        uuid: "{{ _routeParams.uuid }}"
+        path: "{{ _routeParams.path }}"
+  editing: true
+  notificationTitle: _("Saved file.")
+  component: omv-services-filemanager-edit-form-page
