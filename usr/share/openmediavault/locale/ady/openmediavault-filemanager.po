@@ -1,0 +1,353 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the openmediavault-filemanager package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+# 
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: openmediavault-filemanager\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-18 15:25+0000\n"
+"PO-Revision-Date: 2026-10-18 15:25+0000\n"
+"Language-Team: Adyghe (https://app.transifex.com/openmediavault-plugin-developers/teams/1854/ady/)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ady\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Access"
+msgstr ""
+
+msgid "Action"
+msgstr ""
+
+msgid "Allow access"
+msgstr ""
+
+msgid "Apply"
+msgstr ""
+
+msgid ""
+"Apply to the contents of folders, too. Execute permissions are only given to"
+" folders and to files that are already executable."
+msgstr ""
+
+msgid "Archive"
+msgstr ""
+
+msgid "Archive name"
+msgstr ""
+
+msgid "Audit log"
+msgstr ""
+
+msgid "Broken link"
+msgstr ""
+
+msgid "Browse"
+msgstr ""
+
+msgid "Browse as tree"
+msgstr ""
+
+msgid "Change owner"
+msgstr ""
+
+msgid "Change owner ..."
+msgstr ""
+
+msgid "Change permissions"
+msgstr ""
+
+msgid "Change permissions ..."
+msgstr ""
+
+msgid "Changing owner ..."
+msgstr ""
+
+msgid "Changing permissions ..."
+msgstr ""
+
+msgid "Comment"
+msgstr ""
+
+msgid "Compress"
+msgstr ""
+
+msgid "Compress ..."
+msgstr ""
+
+msgid "Compressing ..."
+msgstr ""
+
+msgid "Content"
+msgstr ""
+
+msgid "Copy"
+msgstr ""
+
+msgid "Copy or move"
+msgstr ""
+
+msgid "Copy to ..."
+msgstr ""
+
+msgid "Copying ..."
+msgstr ""
+
+msgid "Create"
+msgstr ""
+
+msgid "Date & Time"
+msgstr ""
+
+msgid "Delete permanently"
+msgstr ""
+
+msgid "Deleted."
+msgstr ""
+
+msgid "Deleting ..."
+msgstr ""
+
+msgid "Details"
+msgstr ""
+
+msgid ""
+"Do you really want to permanently delete all items in the trash of '{{ "
+"_selected[0].name }}'?"
+msgstr ""
+
+msgid ""
+"Do you really want to permanently delete all items in the trash of this "
+"shared folder?"
+msgstr ""
+
+msgid ""
+"Do you really want to permanently delete the selected item(s)? This cannot "
+"be undone."
+msgstr ""
+
+msgid "Download"
+msgstr ""
+
+msgid "Edit"
+msgstr ""
+
+msgid "Editor size limit"
+msgstr ""
+
+msgid "Empty trash"
+msgstr ""
+
+msgid "Emptying trash ..."
+msgstr ""
+
+msgid "Enabled"
+msgstr ""
+
+msgid "Enter an octal mode, e.g. 0775."
+msgstr ""
+
+msgid "Extract"
+msgstr ""
+
+msgid "Extracting ..."
+msgstr ""
+
+msgid "File"
+msgstr ""
+
+msgid "File Manager"
+msgstr ""
+
+msgid "File created."
+msgstr ""
+
+msgid "Folder"
+msgstr ""
+
+msgid "Folder created."
+msgstr ""
+
+msgid "Format"
+msgstr ""
+
+msgid "Group"
+msgstr ""
+
+msgid ""
+"Let users that log in to the web interface browse the shared folders "
+"according to their shared folder privileges (read-only or read/write). "
+"Changing permissions and owners stays restricted to administrators."
+msgstr ""
+
+msgid "Link target"
+msgstr ""
+
+msgid "Location"
+msgstr ""
+
+msgid ""
+"Log every change (who, what, where) to the system journal. Shown under "
+"Diagnostics | System Logs | File Manager."
+msgstr ""
+
+msgid "Maximum size in MiB of files that can be opened in the editor."
+msgstr ""
+
+msgid "Mode"
+msgstr ""
+
+msgid "Modified"
+msgstr ""
+
+msgid "Move"
+msgstr ""
+
+msgid ""
+"Move deleted items to the '.recycle' folder of the shared folder instead of "
+"deleting them permanently. This is the same folder the Samba recycle bin "
+"uses."
+msgstr ""
+
+msgid "Move to ..."
+msgstr ""
+
+msgid "Moving ..."
+msgstr ""
+
+msgid "Name"
+msgstr ""
+
+msgid "New file"
+msgstr ""
+
+msgid "New folder"
+msgstr ""
+
+msgid "New name"
+msgstr ""
+
+msgid "Non-administrative users"
+msgstr ""
+
+msgid "Octal mode, e.g. 0775 or 0664."
+msgstr ""
+
+msgid "Only allow browsing, previewing and downloading."
+msgstr ""
+
+msgid "Open"
+msgstr ""
+
+msgid "Open folder"
+msgstr ""
+
+msgid "Open trash"
+msgstr ""
+
+msgid "Overwrite existing items"
+msgstr ""
+
+msgid "Owner"
+msgstr ""
+
+msgid "Parent"
+msgstr ""
+
+msgid "Part of the name, case-insensitive. Wildcards (* and ?) are supported."
+msgstr ""
+
+msgid "Permissions"
+msgstr ""
+
+msgid "Preview"
+msgstr ""
+
+msgid "Properties"
+msgstr ""
+
+msgid "Read-only"
+msgstr ""
+
+msgid "Read/Write"
+msgstr ""
+
+msgid "Recursive"
+msgstr ""
+
+msgid "Rename"
+msgstr ""
+
+msgid "Renamed."
+msgstr ""
+
+msgid "Restore"
+msgstr ""
+
+msgid "Restored."
+msgstr ""
+
+msgid "Restoring ..."
+msgstr ""
+
+msgid "Saved file."
+msgstr ""
+
+msgid "Saved settings."
+msgstr ""
+
+msgid "Search"
+msgstr ""
+
+msgid "Search in this folder and its subfolders"
+msgstr ""
+
+msgid "Settings"
+msgstr ""
+
+msgid "Shared folder"
+msgstr ""
+
+msgid "Shared folders"
+msgstr ""
+
+msgid "Show files and folders whose name starts with a dot."
+msgstr ""
+
+msgid "Show hidden files"
+msgstr ""
+
+msgid "Size"
+msgstr ""
+
+msgid ""
+"The destination folder, relative to the shared folder. Leave empty for the "
+"top level."
+msgstr ""
+
+msgid ""
+"The shared folders available in the file manager. Select none to make all "
+"shared folders available."
+msgstr ""
+
+msgid "Trash"
+msgstr ""
+
+msgid "Trash emptied."
+msgstr ""
+
+msgid "Type"
+msgstr ""
+
+msgid "Upload files"
+msgstr ""
+
+msgid "Use trash"
+msgstr ""
+
+msgid "User"
+msgstr ""
