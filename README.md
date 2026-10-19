@@ -14,7 +14,8 @@ third-party *filebrowser* container.
   folders), change permissions and owner (optionally recursively).
 - Edit text files in the code editor. Files are limited by a configurable
   size, binary and non-UTF-8 files are refused, and saving is atomic and
-  keeps the owner, mode and ACLs.
+  keeps the owner, mode and ACLs. Saving is refused if the file was changed
+  by someone else since it was opened.
 - Upload files of any size, download files, and download folders or several
   items as one ZIP archive.
 - Preview images, PDFs, audio, video and text in a new browser tab; other
@@ -22,6 +23,7 @@ third-party *filebrowser* container.
   name opens it.
 - Compress to ZIP or tar.gz and extract archives into a new folder.
 - Properties dialog (type, MIME type, owner, mode, ACLs, recursive size).
+- Checksums (MD5, SHA-1, SHA-256, SHA-512) of one or more files.
 - Recursive search by name, with wildcards.
 - Trash: deleted items go to `.recycle/<user>/<path>` in the shared folder,
   the same layout the Samba recycle bin uses, and can be restored. Deleting
@@ -32,4 +34,5 @@ third-party *filebrowser* container.
 - Settings: enable, read-only mode, which shared folders are available,
   hidden files, editor size limit, trash and audit log.
 - Optional access for non-administrative users, based on the shared folder
-  privileges (no access / read-only / read-write) configured in OMV.
+  privileges (no access / read-only / read-write) configured in OMV. Like
+  with SMB, the file system permissions and ACLs apply to them as well.

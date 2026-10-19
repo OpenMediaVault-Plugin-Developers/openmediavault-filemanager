@@ -7,7 +7,9 @@ openmediavault-filemanager (8.0) stable; urgency=low
     to open it and a file name to open it in a new browser tab.
   * Create folders and files, rename, copy and move (also between shared
     folders), change permissions and owner.
-  * Edit text files with a size limit; files are saved atomically.
+  * Edit text files with a size limit; files are saved atomically, and
+    not at all if they were changed by someone else in the meantime.
+  * Calculate MD5/SHA-1/SHA-256/SHA-512 checksums of files.
   * Upload files of any size, download files, folders and selections as
     ZIP archive, and preview images, PDFs, audio, video and text (other
     files are downloaded).
@@ -15,6 +17,6 @@ openmediavault-filemanager (8.0) stable; urgency=low
   * Trash compatible with the Samba recycle bin, with restore.
   * Audit log in Diagnostics | System Logs.
   * Settings page and optional access for non-administrative users based
-    on the shared folder privileges.
+    on the shared folder privileges and the file system permissions.
 
  -- OpenMediaVault Plugin Developers <plugins@omv-extras.org>  Wed, 01 Jul 2026 00:00:00 +0000
