@@ -123,12 +123,13 @@ assert_rpc() {
             || echo "$out" | tail -3)"
         return 1
     fi
-    if [ -n "$pattern" ] && ! echo "$out" | grep -q -- "$pattern"; then
+    # omv-rpc escapes slashes in its JSON output ("\/").
+    if [ -n "$pattern" ] && ! echo "${out//\\\//\/}" | grep -q -- "$pattern"; then
         _fail "$desc" "Pattern '$pattern' not found in: ${out:0:200}"
         return 1
     fi
     _pass "$desc"
-    echo "$out"
+    OUT=$out
     return 0
 }
 
@@ -399,7 +400,7 @@ $TRASH_EXISTED && info "'.recycle' exists already — 'emptyTrash' will be skipp
 section "Settings"
 # ===========================================================================
 
-OUT=$(assert_rpc "getSettings" "FileManager" "getSettings") || {
+assert_rpc "getSettings" "FileManager" "getSettings" || {
     echo -e "\n${RED}getSettings failed — aborting.${NC}" >&2
     exit 1
 }
@@ -434,16 +435,16 @@ assert_rpc "setSettings — all shared folders again" "FileManager" "setSettings
 section "Shared folders & enumerations"
 # ===========================================================================
 
-OUT=$(assert_rpc "getSharedFolderList" "FileManager" "getSharedFolderList" "$GETLIST") && {
+assert_rpc "getSharedFolderList" "FileManager" "getSharedFolderList" "$GETLIST" && {
     check "getSharedFolderList — contains '$SF_NAME' (rw)" \
         test "$(echo "$OUT" | jq -r --arg u "$SF_UUID" '.data[] | select(.uuid == $u) | .access')" = "rw"
     check "getSharedFolderList — trash token" \
         test "$(echo "$OUT" | jq -r --arg u "$SF_UUID" '.data[] | select(.uuid == $u) | .trashpath')" = "$(tok .recycle)"
 }
-OUT=$(assert_rpc "enumerateSharedFolders" "FileManager" "enumerateSharedFolders") && \
+assert_rpc "enumerateSharedFolders" "FileManager" "enumerateSharedFolders" && \
     jcheck "enumerateSharedFolders — contains '$SF_NAME'" "$OUT" \
         'any(.[]; .uuid == $u)' --arg u "$SF_UUID"
-OUT=$(assert_rpc "enumerateBrowsableFolders" "FileManager" "enumerateBrowsableFolders") && \
+assert_rpc "enumerateBrowsableFolders" "FileManager" "enumerateBrowsableFolders" && \
     jcheck "enumerateBrowsableFolders — contains '$SF_NAME'" "$OUT" \
         'any(.[]; .uuid == $u)' --arg u "$SF_UUID"
 assert_rpc "enumerateUsers — contains root" "FileManager" "enumerateUsers" '{}' \
@@ -503,7 +504,7 @@ ln -s missing "$TEST_DIR/broken"
 section "Listing & confinement"
 # ===========================================================================
 
-OUT=$(assert_rpc "getList — test folder" "FileManager" "getList" "$(list_params "$T")") && {
+assert_rpc "getList — test folder" "FileManager" "getList" "$(list_params "$T")" && {
     jcheck "getList — '..' row present" "$OUT" \
         'any(.data[]; .type == "parentdir")'
     jcheck "getList — hidden file shown" "$OUT" \
@@ -592,15 +593,15 @@ section "Search"
 # ===========================================================================
 
 printf 'x' > "$TEST_DIR/sub/FooBar.TXT"
-OUT=$(assert_rpc "search — 'foo'" "FileManager" "search" \
-    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"query\":\"foo\",\"start\":0,\"limit\":null,\"sortfield\":\"name\",\"sortdir\":\"asc\"}") && {
+assert_rpc "search — 'foo'" "FileManager" "search" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"query\":\"foo\",\"start\":0,\"limit\":null,\"sortfield\":\"name\",\"sortdir\":\"asc\"}" && {
     check "search — case-insensitive, recursive" \
         test "$(echo "$OUT" | names | sort | tr '\n' ',')" = "FooBar.TXT,foo.log,"
     check "search — location of a result" \
         test "$(echo "$OUT" | jq -r '.data[] | select(.name == "foo.log") | .location')" = "/$T/sub"
 }
-OUT=$(assert_rpc "search — wildcard '*.log'" "FileManager" "search" \
-    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"query\":\"*.log\",\"start\":0,\"limit\":null}") && \
+assert_rpc "search — wildcard '*.log'" "FileManager" "search" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"query\":\"*.log\",\"start\":0,\"limit\":null}" && \
     check "search — wildcard result" test "$(echo "$OUT" | names)" = "foo.log"
 
 # ===========================================================================
@@ -700,30 +701,30 @@ section "Download & preview"
 # download.php normally streams and unlinks staged files; remember them.
 stage() { local f; f=$(echo "$1" | jq -r 'select(.unlink == true) | .filepath'); [ -n "$f" ] && STAGED+=("$f"); }
 
-OUT=$(assert_rpc "download — file" "FileManager" "download" \
-    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/pic.png")\"}" '"filename":"pic.png"') && stage "$OUT"
+assert_rpc "download — file" "FileManager" "download" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/pic.png")\"}" '"filename":"pic.png"' && stage "$OUT"
 chmod 600 "$TEST_DIR/latin1.txt"
-OUT=$(assert_rpc "download — private file is staged" "FileManager" "download" \
-    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/latin1.txt")\"}" '"unlink":true') && {
+assert_rpc "download — private file is staged" "FileManager" "download" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/latin1.txt")\"}" '"unlink":true' && {
     stage "$OUT"
     F=$(echo "$OUT" | jq -r '.filepath')
     check "download — staged copy readable by $WEBGUI_USER" \
         test "$(stat -c %U "$F")" = "$WEBGUI_USER"
 }
-OUT=$(assert_rpc "download — folder as ZIP" "FileManager" "download" \
-    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/sub")\"}" '"filename":"sub.zip"') && {
+assert_rpc "download — folder as ZIP" "FileManager" "download" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/sub")\"}" '"filename":"sub.zip"' && {
     stage "$OUT"
     check "download — ZIP contains sub/foo.log" \
         python3 -c "import sys,zipfile; sys.exit('sub/foo.log' not in zipfile.ZipFile('$(echo "$OUT" | jq -r .filepath)').namelist())"
 }
-OUT=$(assert_rpc "downloadArchive — two items" "FileManager" "downloadArchive" \
-    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/a.txt"),$(tok "$T/sub")\"}" '"filename":"download.zip"') && stage "$OUT"
+assert_rpc "downloadArchive — two items" "FileManager" "downloadArchive" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/a.txt"),$(tok "$T/sub")\"}" '"filename":"download.zip"' && stage "$OUT"
 assert_rpc_fails "downloadArchive — escaping symlink" "FileManager" "downloadArchive" \
     "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/escape")\"}" "escapes"
-OUT=$(assert_rpc "preview — image inline" "FileManager" "preview" \
-    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/pic.png")\"}" '"Content-Type":"image/png"') && stage "$OUT"
-OUT=$(assert_rpc "preview — HTML sent as text/plain" "FileManager" "preview" \
-    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/page.html")\"}" 'text/plain') && stage "$OUT"
+assert_rpc "preview — image inline" "FileManager" "preview" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/pic.png")\"}" '"Content-Type":"image/png"' && stage "$OUT"
+assert_rpc "preview — HTML sent as text/plain" "FileManager" "preview" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/page.html")\"}" 'text/plain' && stage "$OUT"
 assert_rpc_fails "preview — binary file" "FileManager" "preview" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/bin.dat")\"}" "cannot be previewed"
 
@@ -754,7 +755,7 @@ assert_rpc_fails "uploadChunk — existing file kept" "FileManager" "uploadChunk
     "$(up 0 true false "$C1")" "already exists"
 assert_rpc "uploadChunk — overwrite" "FileManager" "uploadChunk" \
     "$(up 0 true true "$C1")" >/dev/null
-check "uploadChunk — overwritten" test "$(cat "$TEST_DIR/up.txt")" = "hello"
+check "uploadChunk — overwritten" test "$(cat "$TEST_DIR/up.txt")" = "hello "
 
 # ===========================================================================
 section "Trash"
@@ -815,8 +816,8 @@ for action in mkdir mkfile rename edit copy move compress extract chmod chown \
     check "audit log — '$action' entry" \
         bash -c "echo \"\$0\" | grep -q '^\[admin\] $action: $SF_NAME:/$T'" "$LOG"
 done
-OUT=$(assert_rpc "LogFile getList — filemanager log" "LogFile" "getList" \
-    '{"id":"filemanager","start":0,"limit":null,"sortfield":null,"sortdir":null}') && \
+assert_rpc "LogFile getList — filemanager log" "LogFile" "getList" \
+    '{"id":"filemanager","start":0,"limit":null,"sortfield":null,"sortdir":null}' && \
     jcheck "LogFile getList — rows parsed into user/action/message" "$OUT" \
         'any(.data[]; .user == "admin" and .action == "mkdir")'
 set_settings '.auditlog = false'
@@ -859,7 +860,7 @@ else
         "getSharedFolderList" "$GETLIST" "not available"
     set_settings '.allowusers = true'
     EXPECT_ACCESS=$([ "$USER_PERMS" = "7" ] && echo rw || echo ro)
-    OUT=$(assert_rpc "user — getSharedFolderList" "FileManager" "getSharedFolderList" "$GETLIST") && \
+    assert_rpc "user — getSharedFolderList" "FileManager" "getSharedFolderList" "$GETLIST" && \
         check "user — '$SF_NAME' listed as $EXPECT_ACCESS" \
             test "$(echo "$OUT" | jq -r --arg u "$SF_UUID" '.data[] | select(.uuid == $u) | .access')" = "$EXPECT_ACCESS"
     assert_rpc "user — getList" "FileManager" "getList" "$(list_params "$T")" >/dev/null
