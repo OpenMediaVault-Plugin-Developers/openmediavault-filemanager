@@ -521,7 +521,19 @@ assert_rpc "getList — test folder" "FileManager" "getList" "$(list_params "$T"
         test "$(echo "$OUT" | jq -r '.data[] | select(.name == "a.txt") | .dirpath')" = "$(tok "$T")"
     jcheck "getList — no 'parent' key (tree relation is set client-side)" "$OUT" \
         'all(.data[]; has("parent") | not)'
+    jcheck "getList — rows carry the shared folder" "$OUT" \
+        'all(.data[]; .uuid == $u)' --arg u "$SF_UUID"
+    jcheck "getList — folder links use the alternate route" "$OUT" \
+        'all(.data[]; .route == "open")'
 }
+assert_rpc "getList — from the alternate route" "FileManager" "getList" \
+    "$(list_params "$T" | jq -c '. + {altroute: "true"}')" && \
+    jcheck "getList — folder links use the default route" "$OUT" \
+        'all(.data[]; .route == "browse")'
+assert_rpc "getList — top level" "FileManager" "getList" "$(list_params "")" && \
+    jcheck "getList — top-level '..' leads to the shared folders" "$OUT" \
+        'any(.data[]; .type == "parentdir" and .path == "")'
+
 assert_rpc "getLocation" "FileManager" "getLocation" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/sub")\"}" \
     "\"location\":\"/$T/sub\"" >/dev/null
@@ -725,8 +737,8 @@ assert_rpc "preview — image inline" "FileManager" "preview" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/pic.png")\"}" '"Content-Type":"image/png"' && stage "$OUT"
 assert_rpc "preview — HTML sent as text/plain" "FileManager" "preview" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/page.html")\"}" 'text/plain' && stage "$OUT"
-assert_rpc_fails "preview — binary file" "FileManager" "preview" \
-    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/bin.dat")\"}" "cannot be previewed"
+assert_rpc "preview — binary file sent as attachment" "FileManager" "preview" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/bin.dat")\"}" '"Content-Disposition":"attachment' && stage "$OUT"
 
 # ===========================================================================
 section "Upload"
