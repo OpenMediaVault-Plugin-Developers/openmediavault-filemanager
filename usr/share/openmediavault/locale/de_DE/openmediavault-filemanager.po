@@ -3,6 +3,9 @@
 # This file is distributed under the same license as the openmediavault-filemanager package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 # 
+# Translators:
+# Ettore Atalan <atalanttore@googlemail.com>, 2026
+# 
 #, fuzzy
 msgid ""
 msgstr ""
@@ -10,11 +13,12 @@ msgstr ""
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-10-19 23:42+0000\n"
 "PO-Revision-Date: 2026-10-18 15:25+0000\n"
-"Language-Team: German (Germany) (https://app.transifex.com/openmediavault-plugin-developers/teams/1854/de_DE/)\n"
+"Last-Translator: Ettore Atalan <atalanttore@googlemail.com>, 2026\n"
+"Language-Team: German (https://app.transifex.com/openmediavault-plugin-developers/teams/1854/de/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Language: de_DE\n"
+"Language: de\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 msgid ""
@@ -22,19 +26,19 @@ msgid ""
 msgstr ""
 
 msgid "Access"
-msgstr ""
+msgstr "Zugriff"
 
 msgid "Action"
-msgstr ""
+msgstr "Aktion"
 
 msgid "Algorithm"
 msgstr ""
 
 msgid "Allow access"
-msgstr ""
+msgstr "Zugriff zulassen"
 
 msgid "Apply"
-msgstr ""
+msgstr "Anwenden"
 
 msgid ""
 "Apply to the contents of folders, too. Execute permissions are only given to"
@@ -42,91 +46,91 @@ msgid ""
 msgstr ""
 
 msgid "Archive"
-msgstr ""
+msgstr "Archiv"
 
 msgid "Archive name"
-msgstr ""
+msgstr "Archivname"
 
 msgid "Audit log"
-msgstr ""
+msgstr "Auditprotokoll"
 
 msgid "Broken link"
-msgstr ""
+msgstr "Defekter Link"
 
 msgid "Browse"
-msgstr ""
+msgstr "Durchsuchen"
 
 msgid "Browse as tree"
-msgstr ""
+msgstr "Als Baum durchsuchen"
 
 msgid "Calculate"
 msgstr ""
 
 msgid "Change owner"
-msgstr ""
+msgstr "Eigentümer ändern"
 
 msgid "Change owner ..."
-msgstr ""
+msgstr "Eigentümer ändern ..."
 
 msgid "Change permissions"
-msgstr ""
+msgstr "Berechtigungen ändern"
 
 msgid "Change permissions ..."
-msgstr ""
+msgstr "Berechtigungen ändern ..."
 
 msgid "Changing owner ..."
-msgstr ""
+msgstr "Eigentümer wird geändert ..."
 
 msgid "Changing permissions ..."
-msgstr ""
+msgstr "Berechtigungen werden geändert ..."
 
 msgid "Checksum"
 msgstr ""
 
 msgid "Comment"
-msgstr ""
+msgstr "Kommentar"
 
 msgid "Compress"
-msgstr ""
+msgstr "Komprimieren"
 
 msgid "Compress ..."
-msgstr ""
+msgstr "Komprimieren ..."
 
 msgid "Compressing ..."
-msgstr ""
+msgstr "Wird komprimiert ..."
 
 msgid "Content"
-msgstr ""
+msgstr "Inhalt"
 
 msgid "Copy"
-msgstr ""
+msgstr "Kopieren"
 
 msgid "Copy or move"
-msgstr ""
+msgstr "Kopieren oder verschieben"
 
 msgid "Copy to ..."
-msgstr ""
+msgstr "Kopieren nach ..."
 
 msgid "Copying ..."
-msgstr ""
+msgstr "Wird kopiert ..."
 
 msgid "Create"
-msgstr ""
+msgstr "Erstellen"
 
 msgid "Date & Time"
-msgstr ""
+msgstr "Datum & Zeit"
 
 msgid "Delete permanently"
-msgstr ""
+msgstr "Endgültig löschen"
 
 msgid "Deleted."
-msgstr ""
+msgstr "Gelöscht."
 
 msgid "Deleting ..."
-msgstr ""
+msgstr "Wird gelöscht ..."
 
 msgid "Details"
-msgstr ""
+msgstr "Details"
 
 msgid ""
 "Do you really want to permanently delete all items in the trash of '{{ "
@@ -147,7 +151,7 @@ msgid "Docs"
 msgstr ""
 
 msgid "Download"
-msgstr ""
+msgstr "Herunterladen"
 
 msgid "Download from URL"
 msgstr ""
@@ -156,55 +160,55 @@ msgid "Downloading ..."
 msgstr ""
 
 msgid "Edit"
-msgstr ""
+msgstr "Bearbeiten"
 
 msgid "Editor size limit"
-msgstr ""
+msgstr "Größenbeschränkung für den Editor"
 
 msgid "Empty trash"
-msgstr ""
+msgstr "Papierkorb leeren"
 
 msgid "Emptying trash ..."
-msgstr ""
+msgstr "Papierkorb wird geleert ..."
 
 msgid "Enabled"
-msgstr ""
+msgstr "Aktiviert"
 
 msgid "Enter a http:// or https:// URL."
 msgstr ""
 
 msgid "Enter an octal mode, e.g. 0775."
-msgstr ""
+msgstr "Einen Oktalmodus eingeben, z. B. 0775."
 
 msgid "Extract"
-msgstr ""
+msgstr "Entpacken"
 
 msgid "Extracting ..."
-msgstr ""
+msgstr "Wird entpackt ..."
 
 msgid "File"
-msgstr ""
+msgstr "Datei"
 
 msgid "File Manager"
-msgstr ""
+msgstr "Dateimanager"
 
 msgid "File created."
-msgstr ""
+msgstr "Datei erstellt."
 
 msgid "File name"
 msgstr ""
 
 msgid "Folder"
-msgstr ""
+msgstr "Ordner"
 
 msgid "Folder created."
-msgstr ""
+msgstr "Ordner erstellt."
 
 msgid "Format"
-msgstr ""
+msgstr "Format"
 
 msgid "Group"
-msgstr ""
+msgstr "Gruppe"
 
 msgid "Leave empty to use the name provided by the server."
 msgstr ""
@@ -217,10 +221,10 @@ msgid ""
 msgstr ""
 
 msgid "Link target"
-msgstr ""
+msgstr "Linkziel"
 
 msgid "Location"
-msgstr ""
+msgstr "Ort"
 
 msgid ""
 "Log every change (who, what, where) to the system journal. Shown under "
@@ -229,15 +233,16 @@ msgstr ""
 
 msgid "Maximum size in MiB of files that can be opened in the editor."
 msgstr ""
+"Maximale Größe in MiB von Dateien, die im Editor geöffnet werden können."
 
 msgid "Mode"
-msgstr ""
+msgstr "Modus"
 
 msgid "Modified"
-msgstr ""
+msgstr "Geändert"
 
 msgid "Move"
-msgstr ""
+msgstr "Verschieben"
 
 msgid ""
 "Move deleted items to the '.recycle' folder of the shared folder instead of "
@@ -246,40 +251,40 @@ msgid ""
 msgstr ""
 
 msgid "Move to ..."
-msgstr ""
+msgstr "Verschieben nach ..."
 
 msgid "Moving ..."
-msgstr ""
+msgstr "Wird verschoben ..."
 
 msgid "Name"
-msgstr ""
+msgstr "Name"
 
 msgid "New file"
-msgstr ""
+msgstr "Neue Datei"
 
 msgid "New folder"
-msgstr ""
+msgstr "Neuer Ordner"
 
 msgid "New name"
-msgstr ""
+msgstr "Neuer Name"
 
 msgid "Non-administrative users"
-msgstr ""
+msgstr "Nicht-administrative Benutzer"
 
 msgid "Octal mode, e.g. 0775 or 0664."
-msgstr ""
+msgstr "Oktalmodus, z. B. 0775 oder 0664."
 
 msgid "Only allow browsing, previewing and downloading."
-msgstr ""
+msgstr "Nur das Durchsuchen, Vorschauen und Herunterladen zulassen."
 
 msgid "Open"
-msgstr ""
+msgstr "Öffnen"
 
 msgid "Open folder"
-msgstr ""
+msgstr "Ordner öffnen"
 
 msgid "Open trash"
-msgstr ""
+msgstr "Papierkorb öffnen"
 
 msgid "Otherwise a number is appended to the name."
 msgstr ""
@@ -288,79 +293,79 @@ msgid "Overwrite an existing file"
 msgstr ""
 
 msgid "Overwrite existing items"
-msgstr ""
+msgstr "Bestehende Elemente überschreiben"
 
 msgid "Owner"
-msgstr ""
+msgstr "Eigentümer"
 
 msgid "Parent"
-msgstr ""
+msgstr "Übergeordnet"
 
 msgid "Part of the name, case-insensitive. Wildcards (* and ?) are supported."
 msgstr ""
 
 msgid "Permissions"
-msgstr ""
+msgstr "Berechtigungen"
 
 msgid "Preview"
-msgstr ""
+msgstr "Vorschau"
 
 msgid "Properties"
-msgstr ""
+msgstr "Eigenschaften"
 
 msgid "Read-only"
-msgstr ""
+msgstr "Nur lesen"
 
 msgid "Read/Write"
-msgstr ""
+msgstr "Lesen/Schreiben"
 
 msgid "Recursive"
-msgstr ""
+msgstr "Rekursiv"
 
 msgid "Rename"
-msgstr ""
+msgstr "Umbenennen"
 
 msgid "Renamed."
-msgstr ""
+msgstr "Umbenannt."
 
 msgid "Restore"
-msgstr ""
+msgstr "Wiederherstellen"
 
 msgid "Restored."
-msgstr ""
+msgstr "Wiederhergestellt."
 
 msgid "Restoring ..."
-msgstr ""
+msgstr "Wird wiederhergestellt ..."
 
 msgid "Saved file."
-msgstr ""
+msgstr "Datei gespeichert."
 
 msgid "Saved settings."
-msgstr ""
+msgstr "Einstellungen gespeichert."
 
 msgid "Search"
-msgstr ""
+msgstr "Suchen"
 
 msgid "Search in this folder and its subfolders"
-msgstr ""
+msgstr "In diesem Ordner und seinen Unterordnern suchen"
 
 msgid "Settings"
-msgstr ""
+msgstr "Einstellungen"
 
 msgid "Shared folder"
-msgstr ""
+msgstr "Gemeinsamer Ordner"
 
 msgid "Shared folders"
-msgstr ""
+msgstr "Gemeinsame Ordner"
 
 msgid "Show files and folders whose name starts with a dot."
-msgstr ""
+msgstr "Dateien und Ordner anzeigen, deren Name mit einem Punkt beginnt."
 
 msgid "Show hidden files"
-msgstr ""
+msgstr "Versteckte Dateien anzeigen"
 
 msgid "Size"
-msgstr ""
+msgstr "Größe"
 
 msgid ""
 "The destination folder, relative to the shared folder. Leave empty for the "
@@ -373,25 +378,25 @@ msgid ""
 msgstr ""
 
 msgid "Trash"
-msgstr ""
+msgstr "Papierkorb"
 
 msgid "Trash emptied."
-msgstr ""
+msgstr "Papierkorb geleert."
 
 msgid "Type"
-msgstr ""
+msgstr "Art"
 
 msgid "URL"
 msgstr ""
 
 msgid "Upload files"
-msgstr ""
+msgstr "Dateien hochladen"
 
 msgid "Use trash"
-msgstr ""
+msgstr "Papierkorb verwenden"
 
 msgid "User"
-msgstr ""
+msgstr "Benutzer"
 
 msgid "omv-extras.org wiki"
 msgstr ""
