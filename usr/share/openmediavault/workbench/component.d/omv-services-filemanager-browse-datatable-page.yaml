@@ -18,8 +18,14 @@ data:
         get:
           method: getList
           params:
-            uuid: "{{ _routeParams.uuid }}"
-            path: "{{ _routeParams.path }}"
+            # The route context is lost after a redirect that opens a new
+            # tab (preview, download, upload), so fall back to the
+            # selected row, which carries the same values.
+            uuid: "{{ _routeParams.uuid or _selected[0].uuid }}"
+            path: "{{ _routeParams.path or _selected[0].dirpath }}"
+            # Is this the alternate folder route (/services/filemanager/open/...)?
+            # Folder links point to the other route, see getList.
+            altroute: "{{ (_routeUrlSegments[2] == 'open') if _routeParams.uuid else (_selected[0].route == 'browse') }}"
     columns:
       - name: _("Type")
         prop: type
@@ -36,10 +42,15 @@ data:
               value: _("File")
             brokenlink:
               value: _("Broken link")
+      # Clicking a folder opens it, clicking a file opens it in a new
+      # browser tab (or downloads it if the browser cannot show it).
       - name: _("Name")
         prop: name
         flexGrow: 3
         sortable: true
+        cellTemplateName: template
+        cellTemplateConfig: >-
+          {% if type == "file" %}<a href="download.php?service=FileManager&method=preview&params={{ ('{"uuid":"' ~ uuid ~ '","path":"' ~ path ~ '"}') | encodeuricomponent }}" target="_blank" rel="noopener">{{ name }}</a>{% elif type == "parentdir" and not path %}<a href="#/services/filemanager/browse">{{ name }}</a>{% elif type in ["dir", "parentdir"] %}<a href="#/services/filemanager/{{ route }}/{{ uuid }}/{{ path }}">{{ name }}</a>{% else %}{{ name }}{% endif %}
       - name: _("Size")
         prop: size
         flexGrow: 1
@@ -68,8 +79,8 @@ data:
         sortable: true
         hidden: true
     actions:
-      # Descend into a folder (or ".." parent). Reuses the same route so the
-      # store re-fetches with the new path token.
+      # Descend into a folder (or ".." parent). The ".." of the top level
+      # leads back to the list of shared folders.
       - type: iconButton
         icon: mdi:folder-open-outline
         tooltip: _("Open")
@@ -83,7 +94,7 @@ data:
               arg1: ["dir", "parentdir"]
         execute:
           type: url
-          url: "/services/filemanager/browse/{{ _routeParams.uuid }}/{{ _selected[0].path }}"
+          url: "/services/filemanager/{{ (route ~ '/' ~ uuid ~ '/' ~ path) if path else 'browse' }}"
       # Edit a text file in the code editor. The current folder is passed
       # along so the editor can return to it.
       - type: iconButton
@@ -98,8 +109,9 @@ data:
                 prop: editable
         execute:
           type: url
-          url: "/services/filemanager/edit/{{ _routeParams.uuid }}/{{ _routeParams.path }}/{{ _selected[0].path }}"
+          url: "/services/filemanager/edit/{{ uuid }}/{{ dirpath }}/{{ path }}"
       # Show images, PDFs, audio, video and text in a new browser tab.
+      # Other files are downloaded.
       - type: iconButton
         icon: mdi:eye-outline
         tooltip: _("Preview")
@@ -107,12 +119,13 @@ data:
           minSelected: 1
           maxSelected: 1
           constraint:
-            - operator: truthy
+            - operator: eq
               arg0:
-                prop: preview
+                prop: type
+              arg1: file
         execute:
           type: url
-          url: '/externalRedirect/{{ (''download.php?service=FileManager&method=preview&params={"uuid":"'' ~ _routeParams.uuid ~ ''","path":"'' ~ path ~ ''"}'') | encodeuricomponent }}'
+          url: '/externalRedirect/{{ (''download.php?service=FileManager&method=preview&params={"uuid":"'' ~ uuid ~ ''","path":"'' ~ path ~ ''"}'') | encodeuricomponent }}'
       # A single file is downloaded as is, folders and multiple items as
       # one ZIP archive.
       - type: iconButton
@@ -127,7 +140,7 @@ data:
               arg1: ["dir", "file"]
         execute:
           type: url
-          url: '/download?service=FileManager&method={{ "download" if (_selected | length) == 1 else "downloadArchive" }}&params={"uuid":"{{ _routeParams.uuid }}","path":"{{ _selected[0].path }}","paths":"{{ _selected | join(",", "path") }}"}'
+          url: '/download?service=FileManager&method={{ "download" if (_selected | length) == 1 else "downloadArchive" }}&params={"uuid":"{{ _selected[0].uuid }}","path":"{{ _selected[0].path }}","paths":"{{ _selected | join(",", "path") }}"}'
       - type: menu
         icon: add
         tooltip: _("Create")
@@ -211,7 +224,7 @@ data:
             fields:
               - type: hidden
                 name: uuid
-                value: "{{ _routeParams.uuid }}"
+                value: "{{ _selected[0].uuid }}"
               - type: hidden
                 name: path
                 value: "{{ _selected[0].path }}"
@@ -257,14 +270,14 @@ data:
                 fields: &transferFields
                   - type: hidden
                     name: uuid
-                    value: "{{ _routeParams.uuid }}"
+                    value: "{{ _selected[0].uuid }}"
                   - type: hidden
                     name: paths
                     value: '{{ _selected | join(",", "path") }}'
                   - type: select
                     name: destuuid
                     label: _("Shared folder")
-                    value: "{{ _routeParams.uuid }}"
+                    value: "{{ _selected[0].uuid }}"
                     valueField: uuid
                     textField: name
                     store:
@@ -353,7 +366,7 @@ data:
                 fields:
                   - type: hidden
                     name: uuid
-                    value: "{{ _routeParams.uuid }}"
+                    value: "{{ _selected[0].uuid }}"
                   - type: hidden
                     name: paths
                     value: '{{ _selected | join(",", "path") }}'
@@ -407,7 +420,7 @@ data:
                     service: FileManager
                     method: extract
                     params:
-                      uuid: "{{ _routeParams.uuid }}"
+                      uuid: "{{ _selected[0].uuid }}"
                       path: "{{ _selected[0].path }}"
       - type: menu
         icon: mdi:shield-account-outline
@@ -429,7 +442,7 @@ data:
                 fields:
                   - type: hidden
                     name: uuid
-                    value: "{{ _routeParams.uuid }}"
+                    value: "{{ _selected[0].uuid }}"
                   - type: hidden
                     name: paths
                     value: '{{ _selected | join(",", "path") }}'
@@ -481,7 +494,7 @@ data:
                 fields:
                   - type: hidden
                     name: uuid
-                    value: "{{ _routeParams.uuid }}"
+                    value: "{{ _selected[0].uuid }}"
                   - type: hidden
                     name: paths
                     value: '{{ _selected | join(",", "path") }}'
@@ -554,7 +567,7 @@ data:
                 service: FileManager
                 method: getProperties
                 params:
-                  uuid: "{{ _routeParams.uuid }}"
+                  uuid: "{{ _selected[0].uuid }}"
                   path: "{{ _selected[0].path }}"
       - type: iconButton
         icon: mdi:magnify
@@ -600,7 +613,7 @@ data:
                 service: FileManager
                 method: restore
                 params:
-                  uuid: "{{ _routeParams.uuid }}"
+                  uuid: "{{ uuid }}"
                   path: "{{ path }}"
                 progressMessage: _("Restoring ...")
                 successNotification: _("Restored.")
@@ -608,8 +621,9 @@ data:
             icon: mdi:delete-outline
             execute:
               type: url
-              # The path token of ".recycle".
-              url: "/services/filemanager/browse/{{ _routeParams.uuid }}/LnJlY3ljbGU"
+              # The path token of ".recycle", on the other folder route
+              # than the current one, see getList.
+              url: "/services/filemanager/{{ 'browse' if _routeUrlSegments[2] == 'open' else 'open' }}/{{ _routeParams.uuid }}/LnJlY3ljbGU"
           - text: _("Empty trash")
             icon: mdi:delete-empty-outline
             confirmationDialogConfig:
@@ -639,7 +653,7 @@ data:
             service: FileManager
             method: delete
             params:
-              uuid: "{{ _routeParams.uuid }}"
+              uuid: "{{ uuid }}"
               path: "{{ path }}"
       - type: iconButton
         icon: mdi:delete-forever-outline
@@ -661,7 +675,7 @@ data:
             service: FileManager
             method: delete
             params:
-              uuid: "{{ _routeParams.uuid }}"
+              uuid: "{{ uuid }}"
               path: "{{ path }}"
               permanent: true
             progressMessage: _("Deleting ...")

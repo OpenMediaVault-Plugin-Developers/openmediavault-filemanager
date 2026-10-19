@@ -1,0 +1,17 @@
+# Alternate URL of the folder view. The workbench reuses the page when
+# navigating between two URLs of the same route, so the folder would not
+# be reloaded. Folder links switch between both routes, see getList.
+version: "1.0"
+type: route
+data:
+  url: "/services/filemanager/open/:uuid/:path"
+  title: _("Browse")
+  breadcrumb:
+    text: "{{ sharename }}:{{ location }}"
+    request:
+      service: FileManager
+      method: getLocation
+      params:
+        uuid: "{{ _routeParams.uuid }}"
+        path: "{{ _routeParams.path }}"
+  component: omv-services-filemanager-browse-datatable-page

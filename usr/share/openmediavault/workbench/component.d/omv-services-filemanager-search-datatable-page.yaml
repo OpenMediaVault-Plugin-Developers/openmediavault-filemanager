@@ -35,10 +35,15 @@ data:
               value: _("File")
             brokenlink:
               value: _("Broken link")
+      # Clicking a folder opens it, clicking a file opens it in a new
+      # browser tab (or downloads it if the browser cannot show it).
       - name: _("Name")
         prop: name
         flexGrow: 3
         sortable: true
+        cellTemplateName: template
+        cellTemplateConfig: >-
+          {% if type == "file" %}<a href="download.php?service=FileManager&method=preview&params={{ ('{"uuid":"' ~ uuid ~ '","path":"' ~ path ~ '"}') | encodeuricomponent }}" target="_blank" rel="noopener">{{ name }}</a>{% elif type == "dir" %}<a href="#/services/filemanager/browse/{{ uuid }}/{{ path }}">{{ name }}</a>{% else %}{{ name }}{% endif %}
       - name: _("Location")
         prop: location
         flexGrow: 3
@@ -85,9 +90,10 @@ data:
           minSelected: 1
           maxSelected: 1
           constraint:
-            - operator: truthy
+            - operator: eq
               arg0:
-                prop: preview
+                prop: type
+              arg1: file
         execute:
           type: url
           url: '/externalRedirect/{{ (''download.php?service=FileManager&method=preview&params={"uuid":"'' ~ _routeParams.uuid ~ ''","path":"'' ~ path ~ ''"}'') | encodeuricomponent }}'

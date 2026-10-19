@@ -667,8 +667,13 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
 
     /**
      * Build a listing row for a directory entry.
+     * @param route The route ("browse" or "open") that folder links use.
+     *   Linking to the other of the two folder routes than the one
+     *   currently shown makes the workbench rebuild the page, see
+     *   getList().
      */
-    private function buildRow($absPath, $relPath, $dirToken)
+    private function buildRow($uuid, $absPath, $relPath, $dirToken,
+        $route = "browse")
     {
         $maxEdit = intval($this->settings()['maxeditsize']) * 1024 * 1024;
         $name = basename($absPath);
@@ -684,6 +689,8 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         $broken = $isLink && !file_exists($absPath);
         $size = $isDir ? -1 : ($broken ? -1 : $stat['size']);
         return [
+            "uuid" => $uuid,
+            "route" => $route,
             "name" => $name,
             "type" => $isDir ? "dir" : ($broken ? "brokenlink" : "file"),
             "size" => $size,
@@ -913,29 +920,37 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         $showHidden = boolvalEx($this->settings()['showhidden']) ||
             $this->isInTrash($relPath);
         $dirToken = $this->encodePath($relPath);
+        // The workbench reuses the page when navigating between two URLs
+        // of the same route, so the folder would not be reloaded. Folder
+        // links therefore always point to the other one of the two
+        // folder routes.
+        $route = boolvalEx(array_value($params, "altroute", false)) ?
+            "browse" : "open";
         $result = [];
         // Inject a parent ("..") entry so descending/ascending share one
-        // "Open" action in the datatable.
-        if ($relPath !== ".") {
-            $parentToken = $this->encodePath(dirname($relPath));
-            $result[] = [
-                "name" => "..",
-                "type" => "parentdir",
-                "size" => -1,
-                "mtime" => 0,
-                "mode" => "",
-                "owner" => "",
-                "group" => "",
-                "link" => "",
-                "path" => $parentToken,
-                "dirpath" => $parentToken,
-                "location" => "",
-                "editable" => false,
-                "preview" => "",
-                "archive" => false,
-                "trashed" => false
-            ];
-        }
+        // "Open" action in the datatable. At the top level it leads back
+        // to the list of shared folders, which is marked by an empty path.
+        $parentToken = ($relPath === ".") ? "" :
+            $this->encodePath(dirname($relPath));
+        $result[] = [
+            "uuid" => $params['uuid'],
+            "route" => $route,
+            "name" => "..",
+            "type" => "parentdir",
+            "size" => -1,
+            "mtime" => 0,
+            "mode" => "",
+            "owner" => "",
+            "group" => "",
+            "link" => "",
+            "path" => $parentToken,
+            "dirpath" => $dirToken,
+            "location" => "",
+            "editable" => false,
+            "preview" => "",
+            "archive" => false,
+            "trashed" => false
+        ];
         if (is_dir($dir)) {
             foreach (new \DirectoryIterator($dir) as $item) {
                 if ($item->isDot()) {
@@ -949,8 +964,9 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
                 if (str_ends_with($name, self::PART_SUFFIX)) {
                     continue;
                 }
-                $result[] = $this->buildRow($item->getPathname(),
-                    $this->joinRel($relPath, $name), $dirToken);
+                $result[] = $this->buildRow($params['uuid'],
+                    $item->getPathname(), $this->joinRel($relPath, $name),
+                    $dirToken, $route);
             }
         }
         return $this->applyFilter($result, $params['start'],
@@ -995,8 +1011,8 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             if (str_ends_with($childRel, self::PART_SUFFIX)) {
                 continue;
             }
-            $result[] = $this->buildRow($absPath, $childRel,
-                $this->encodePath(dirname($childRel)));
+            $result[] = $this->buildRow($params['uuid'], $absPath,
+                $childRel, $this->encodePath(dirname($childRel)));
         }
         return $this->applyFilter($result, $params['start'],
             $params['limit'], $params['sortfield'], $params['sortdir']);
@@ -1456,7 +1472,8 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
      * Send a file inline so the browser can display it in a new tab.
      * Only content types that cannot run script in the WebGUI origin are
      * served as is; any textual content (including HTML and SVG) is sent
-     * as text/plain.
+     * as text/plain. Everything else is sent as attachment, so the
+     * browser downloads it.
      */
     public function preview($params, $context)
     {
@@ -1473,6 +1490,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         $safe = ["image/png", "image/jpeg", "image/gif", "image/webp",
             "image/bmp", "image/avif", "image/x-icon",
             "image/vnd.microsoft.icon", "application/pdf"];
+        $disposition = "inline";
         if (in_array($mime, $safe, true) ||
             (1 === preg_match("#^(video|audio)/[\w.+-]+$#", $mime))) {
             $contentType = $mime;
@@ -1482,8 +1500,8 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
                 "inode/x-empty"], true)) {
             $contentType = "text/plain; charset=utf-8";
         } else {
-            throw new \OMV\Exception("Files of type '%s' cannot be " .
-                "previewed. Download the file instead.", $mime);
+            $contentType = "application/octet-stream";
+            $disposition = "attachment";
         }
         list($filePath, $unlink) = $this->prepareDownloadFile($file);
         $this->audit($context, "preview", $params['uuid'], $relPath);
@@ -1491,8 +1509,8 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             "filepath" => $filePath,
             "headers" => [
                 "Content-Type" => $contentType,
-                "Content-Disposition" => sprintf("inline; filename=\"%s\"",
-                    addcslashes(basename($file), "\"\\")),
+                "Content-Disposition" => sprintf("%s; filename=\"%s\"",
+                    $disposition, addcslashes(basename($file), "\"\\")),
                 "Cache-Control" => "private, no-store"
             ],
             "unlink" => $unlink

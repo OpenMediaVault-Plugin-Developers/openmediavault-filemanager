@@ -20,7 +20,10 @@ data:
         get:
           method: getList
           params:
-            uuid: "{{ _routeParams.uuid }}"
+            # The route context is lost after a redirect that opens a new
+            # tab (preview, download, upload), so prefer the shared folder
+            # of the expanded or selected row.
+            uuid: "{{ _parent.uuid or _routeParams.uuid or _selected[0].uuid }}"
             # `_parent` is the row being expanded; it is undefined for
             # the top level rows.
             path: "{{ _parent.path | default('root') }}"
@@ -40,12 +43,18 @@ data:
       transform:
         treeStatus: "{{ 'collapsed' if type == 'dir' else 'disabled' }}"
     columns:
+      # Clicking a folder opens it in the list view, clicking a file
+      # opens it in a new browser tab (or downloads it if the browser
+      # cannot show it).
       - name: _("Name")
         prop: name
         flexGrow: 4
         sortable: true
         isTreeColumn: true
         treeLevelIndent: 24
+        cellTemplateName: template
+        cellTemplateConfig: >-
+          {% if type == "file" %}<a href="download.php?service=FileManager&method=preview&params={{ ('{"uuid":"' ~ uuid ~ '","path":"' ~ path ~ '"}') | encodeuricomponent }}" target="_blank" rel="noopener">{{ name }}</a>{% elif type == "dir" %}<a href="#/services/filemanager/browse/{{ uuid }}/{{ path }}">{{ name }}</a>{% else %}{{ name }}{% endif %}
       - name: _("Size")
         prop: size
         flexGrow: 1
@@ -69,6 +78,20 @@ data:
         flexGrow: 1
     actions:
       - type: iconButton
+        icon: mdi:folder-open-outline
+        tooltip: _("Open")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+          constraint:
+            - operator: eq
+              arg0:
+                prop: type
+              arg1: dir
+        execute:
+          type: url
+          url: "/services/filemanager/browse/{{ uuid }}/{{ path }}"
+      - type: iconButton
         icon: mdi:file-edit-outline
         tooltip: _("Edit")
         enabledConstraints:
@@ -80,7 +103,7 @@ data:
                 prop: editable
         execute:
           type: url
-          url: "/services/filemanager/edit/{{ _routeParams.uuid }}/{{ _selected[0].dirpath }}/{{ _selected[0].path }}"
+          url: "/services/filemanager/edit/{{ uuid }}/{{ dirpath }}/{{ path }}"
       - type: iconButton
         icon: mdi:eye-outline
         tooltip: _("Preview")
@@ -88,12 +111,13 @@ data:
           minSelected: 1
           maxSelected: 1
           constraint:
-            - operator: truthy
+            - operator: eq
               arg0:
-                prop: preview
+                prop: type
+              arg1: file
         execute:
           type: url
-          url: '/externalRedirect/{{ (''download.php?service=FileManager&method=preview&params={"uuid":"'' ~ _routeParams.uuid ~ ''","path":"'' ~ path ~ ''"}'') | encodeuricomponent }}'
+          url: '/externalRedirect/{{ (''download.php?service=FileManager&method=preview&params={"uuid":"'' ~ uuid ~ ''","path":"'' ~ path ~ ''"}'') | encodeuricomponent }}'
       - type: iconButton
         icon: mdi:download
         tooltip: _("Download")
@@ -101,7 +125,7 @@ data:
           minSelected: 1
         execute:
           type: url
-          url: '/download?service=FileManager&method={{ "download" if (_selected | length) == 1 else "downloadArchive" }}&params={"uuid":"{{ _routeParams.uuid }}","path":"{{ _selected[0].path }}","paths":"{{ _selected | join(",", "path") }}"}'
+          url: '/download?service=FileManager&method={{ "download" if (_selected | length) == 1 else "downloadArchive" }}&params={"uuid":"{{ _selected[0].uuid }}","path":"{{ _selected[0].path }}","paths":"{{ _selected | join(",", "path") }}"}'
       - type: menu
         icon: add
         tooltip: _("Create")
@@ -119,7 +143,7 @@ data:
                   arg1: dir
             execute:
               type: url
-              url: "/externalRedirect/{{ ('filemanager-upload.php?uuid=' ~ _routeParams.uuid ~ '&path=' ~ (_selected[0].path if (_selected | length) else 'root')) | encodeuricomponent }}"
+              url: "/externalRedirect/{{ ('filemanager-upload.php?uuid=' ~ (_selected[0].uuid or _routeParams.uuid) ~ '&path=' ~ (_selected[0].path if (_selected | length) else 'root')) | encodeuricomponent }}"
           - text: _("New folder")
             icon: mdi:folder-plus-outline
             enabledConstraints:
@@ -138,7 +162,7 @@ data:
                   # target is passed via hidden fields.
                   - type: hidden
                     name: uuid
-                    value: "{{ _routeParams.uuid }}"
+                    value: "{{ _selected[0].uuid or _routeParams.uuid }}"
                   - type: hidden
                     name: path
                     value: "{{ _selected[0].path if (_selected | length) else 'root' }}"
@@ -172,7 +196,7 @@ data:
                 fields:
                   - type: hidden
                     name: uuid
-                    value: "{{ _routeParams.uuid }}"
+                    value: "{{ _selected[0].uuid or _routeParams.uuid }}"
                   - type: hidden
                     name: path
                     value: "{{ _selected[0].path if (_selected | length) else 'root' }}"
@@ -203,7 +227,7 @@ data:
             fields:
               - type: hidden
                 name: uuid
-                value: "{{ _routeParams.uuid }}"
+                value: "{{ _selected[0].uuid }}"
               - type: hidden
                 name: path
                 value: "{{ _selected[0].path }}"
@@ -238,7 +262,7 @@ data:
                 service: FileManager
                 method: getProperties
                 params:
-                  uuid: "{{ _routeParams.uuid }}"
+                  uuid: "{{ _selected[0].uuid }}"
                   path: "{{ _selected[0].path }}"
       # Moves the items to the trash (if enabled); asks for confirmation.
       - template: delete
@@ -248,5 +272,5 @@ data:
             service: FileManager
             method: delete
             params:
-              uuid: "{{ _routeParams.uuid }}"
+              uuid: "{{ uuid }}"
               path: "{{ path }}"

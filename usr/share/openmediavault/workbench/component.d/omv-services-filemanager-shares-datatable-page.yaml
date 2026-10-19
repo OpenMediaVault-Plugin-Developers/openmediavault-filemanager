@@ -17,10 +17,13 @@ data:
         get:
           method: getSharedFolderList
     columns:
+      # Clicking a shared folder opens it.
       - name: _("Shared folder")
         prop: name
         flexGrow: 2
         sortable: true
+        cellTemplateName: template
+        cellTemplateConfig: '<a href="#/services/filemanager/browse/{{ uuid }}/{{ path }}">{{ name }}</a>'
       - name: _("Comment")
         prop: comment
         flexGrow: 3

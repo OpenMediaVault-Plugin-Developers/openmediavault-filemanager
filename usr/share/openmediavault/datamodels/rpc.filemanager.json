@@ -49,6 +49,12 @@
             "integer",
             "null"
           ]
+        },
+        "altroute": {
+          "type": [
+            "boolean",
+            "string"
+          ]
         }
       }
     }
