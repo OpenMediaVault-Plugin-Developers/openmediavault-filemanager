@@ -11,8 +11,11 @@ Package: openmediavault-filemanager
 Architecture: all
 Depends: openmediavault (>= 8.5.12),
          acl,
+         bzip2,
          file,
          php-zip,
+         xz-utils,
+         zstd,
          ${misc:Depends}
 Description: OpenMediaVault native file manager plugin
  A native file manager built entirely on the OpenMediaVault declarative
