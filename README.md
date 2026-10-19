@@ -18,6 +18,10 @@ third-party *filebrowser* container.
   by someone else since it was opened.
 - Upload files of any size, download files, and download folders or several
   items as one ZIP archive.
+- Download a file from a http:// or https:// URL into the current folder,
+  with progress. Addresses in the local network and of the NAS itself are
+  refused, also after redirects, and downloads larger than the free space
+  are aborted.
 - Preview images, PDFs, audio, video and text in a new browser tab; other
   files are downloaded. Clicking a file name does the same, clicking a folder
   name opens it.

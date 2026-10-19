@@ -13,6 +13,8 @@ openmediavault-filemanager (8.0) stable; urgency=low
   * Upload files of any size, download files, folders and selections as
     ZIP archive, and preview images, PDFs, audio, video and text (other
     files are downloaded).
+  * Download files from http:// and https:// URLs into a folder;
+    local and private addresses are refused.
   * Compress to ZIP/tar.gz and extract archives.
   * Trash compatible with the Samba recycle bin, with restore.
   * Audit log in Diagnostics | System Logs.
