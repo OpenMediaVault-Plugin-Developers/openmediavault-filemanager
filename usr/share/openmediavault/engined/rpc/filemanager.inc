@@ -34,7 +34,9 @@ require_once("openmediavault/functions.inc");
  * Administrators have full access. Non-administrators are only admitted
  * when enabled in the settings, and then only according to the shared
  * folder privileges (no access / read-only / read-write) configured in
- * OMV, the same model the SMB and FTP services use.
+ * OMV, the same model the SMB and FTP services use. Like with SMB, the
+ * file system permissions and ACLs apply to them as well: every access
+ * is checked as the calling user, see assertAccess().
  */
 class FileManager extends \OMV\Rpc\ServiceAbstract
 {
@@ -44,6 +46,8 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
     const TRASH_DIR = ".recycle";
     // Suffix of partially uploaded files.
     const PART_SUFFIX = ".fmpart";
+    // Partial files older than this (seconds) are considered abandoned.
+    const PART_MAX_AGE = 86400;
     // Maximum number of search results.
     const SEARCH_LIMIT = 1000;
 
@@ -91,6 +95,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         $this->registerMethod("compress");
         $this->registerMethod("extract");
         $this->registerMethod("getProperties");
+        $this->registerMethod("checksum");
     }
 
     /* ------------------------------------------------------------------
@@ -357,6 +362,128 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
     }
 
     /**
+     * Get the uid and gid of the calling user.
+     * @return array [uid, gid]
+     */
+    private function callerIds($context)
+    {
+        $info = posix_getpwnam($context['username']);
+        if (false === $info) {
+            throw new \OMV\Exception("The user '%s' does not exist.",
+                $context['username']);
+        }
+        return [$info['uid'], $info['gid']];
+    }
+
+    /**
+     * Create a command that runs as the calling non-administrative user,
+     * including its supplementary groups, so the file system permissions
+     * and ACLs apply like they do via SMB or NFS. Commands of
+     * administrators run as root.
+     */
+    private function userCommand($context, $command, array $args)
+    {
+        if ($this->isAdmin($context)) {
+            return new \OMV\System\Process($command, $args);
+        }
+        list($uid, $gid) = $this->callerIds($context);
+        return new \OMV\System\Process("setpriv", array_merge([
+            sprintf("--reuid=%d", $uid), sprintf("--regid=%d", $gid),
+            "--init-groups", "--", $command], $args));
+    }
+
+    private function displayPath($rootReal, $path)
+    {
+        $relPath = $this->relOf($rootReal, $path);
+        return "/" . (($relPath === ".") ? "" : $relPath);
+    }
+
+    /**
+     * Assert the calling user passes the given test(1) checks on a path,
+     * e.g. ["-r", "-x"]. Administrators always pass.
+     */
+    private function assertAccess($context, $rootReal, $path, array $tests)
+    {
+        if ($this->isAdmin($context)) {
+            return;
+        }
+        $args = [];
+        foreach ($tests as $test) {
+            if (!empty($args)) {
+                $args[] = "-a";
+            }
+            $args[] = $test;
+            $args[] = escapeshellarg($path);
+        }
+        $cmd = $this->userCommand($context, "test", $args);
+        $cmd->setQuiet(true);
+        $cmd->execute($output, $exitStatus);
+        if (0 !== $exitStatus) {
+            throw new \OMV\Exception("Permission denied: '%s'.",
+                $this->displayPath($rootReal, $path));
+        }
+    }
+
+    /**
+     * Assert the calling user may read (or, if $write is set, delete) a
+     * file or a whole directory tree. Symlinks are not followed.
+     */
+    private function assertTreeAccess($context, $rootReal, $path, $write)
+    {
+        if ($this->isAdmin($context)) {
+            return;
+        }
+        // Reading needs `r` on files and `rx` on folders, deleting needs
+        // `wx` on every folder. Deleting does not descend into other file
+        // systems, see removeRecursive().
+        $cond = $write ? ["-xdev", "-type", "d", "'('", "'!'", "-writable",
+            "-o", "'!'", "-executable", "')'"] : ["'('", "-type", "d",
+            "'('", "'!'", "-readable", "-o", "'!'", "-executable", "')'",
+            "-o", "'!'", "-type", "d", "'!'", "-type", "l", "'!'",
+            "-readable", "')'"];
+        $cmd = $this->userCommand($context, "find", array_merge(
+            [escapeshellarg($path)], $cond, ["-print", "-quit",
+            "2>/dev/null"]));
+        $cmd->setQuiet(true);
+        $cmd->execute($output, $exitStatus);
+        $denied = trim(strval(reset($output)));
+        // find fails without output if the path itself is not reachable.
+        if (($denied !== "") || (0 !== $exitStatus)) {
+            throw new \OMV\Exception("Permission denied: '%s'.",
+                $this->displayPath($rootReal, ($denied !== "") ? $denied :
+                $path));
+        }
+    }
+
+    /**
+     * Assert the calling user may remove a directory entry from its parent
+     * (rename, delete, move). Moving a folder to another parent also
+     * needs write access to the folder, which has to update its `..`
+     * entry. A sticky parent, e.g. a shared `/tmp`-like folder, only lets
+     * the owner of the entry or of the parent remove it.
+     */
+    private function assertRemovable($context, $rootReal, $path, $move)
+    {
+        if ($this->isAdmin($context)) {
+            return;
+        }
+        $parent = dirname($path);
+        $this->assertAccess($context, $rootReal, $parent, ["-w", "-x"]);
+        if ($move && is_dir($path) && !is_link($path)) {
+            $this->assertAccess($context, $rootReal, $path, ["-w"]);
+        }
+        $parentStat = stat($parent);
+        if ($parentStat['mode'] & 01000) {
+            list($uid) = $this->callerIds($context);
+            if ((lstat($path)['uid'] !== $uid) &&
+                ($parentStat['uid'] !== $uid)) {
+                throw new \OMV\Exception("Permission denied: '%s'.",
+                    $this->displayPath($rootReal, $path));
+            }
+        }
+    }
+
+    /**
      * Resolve a shared folder UUID + relative path to an absolute,
      * canonicalised path and guarantee it stays inside the shared folder.
      * Methods that modify the file system must set $write, which is
@@ -444,9 +571,12 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
     private function validateName($name)
     {
         $name = strval($name);
+        // Control characters, e.g. newlines, would break the audit log
+        // and the processing of command output.
         if (($name === "") || ($name === ".") || ($name === "..") ||
             (false !== strpos($name, "/")) ||
-            (false !== strpos($name, "\0")) || (strlen($name) > 255)) {
+            (1 === preg_match('/[\x00-\x1f\x7f]/', $name)) ||
+            (strlen($name) > 255)) {
             throw new \OMV\Exception("Invalid name '%s'.", $name);
         }
         return $name;
@@ -478,6 +608,9 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         }
         $message = sprintf("[%s] %s: %s", $context['username'], $action,
             trim($location . " " . $extra));
+        // Names created otherwise, e.g. via SMB, may contain control
+        // characters; keep every entry on one line.
+        $message = preg_replace('/[\x00-\x1f\x7f]/', "?", $message);
         openlog("omv-filemanager", LOG_PID, LOG_USER);
         syslog(LOG_NOTICE, $message);
         closelog();
@@ -606,6 +739,21 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         }
         throw new \OMV\Exception("Failed to find a free name for '%s'.",
             basename($path));
+    }
+
+    /**
+     * Remove partial files of uploads and archives that were abandoned,
+     * e.g. because the browser tab was closed during an upload.
+     */
+    private function purgeStaleParts($dir)
+    {
+        foreach (new \DirectoryIterator($dir) as $item) {
+            if (!$item->isDot() && !$item->isLink() && $item->isFile() &&
+                str_ends_with($item->getFilename(), self::PART_SUFFIX) &&
+                ($item->getMTime() < (time() - self::PART_MAX_AGE))) {
+                @unlink($item->getPathname());
+            }
+        }
     }
 
     private function trashRoot($context)
@@ -952,6 +1100,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             "trashed" => false
         ];
         if (is_dir($dir)) {
+            $this->assertAccess($context, $rootReal, $dir, ["-r", "-x"]);
             foreach (new \DirectoryIterator($dir) as $item) {
                 if ($item->isDot()) {
                     continue;
@@ -989,6 +1138,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             return $this->applyFilter([], $params['start'],
                 $params['limit'], $params['sortfield'], $params['sortdir']);
         }
+        $this->assertAccess($context, $rootReal, $dir, ["-r", "-x"]);
         $pattern = (strpbrk($query, "*?[") === false) ?
             "*" . $query . "*" : $query;
         $cmdArgs = [escapeshellarg($dir), "-xdev", "-mindepth", "1"];
@@ -996,13 +1146,21 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             $cmdArgs = array_merge($cmdArgs, ["-name", "'.*'", "-prune",
                 "-o"]);
         }
+        // The NUL separated result is base64 encoded, so names containing
+        // newlines or trailing blanks survive exec(), which splits the
+        // output into lines and strips trailing whitespace.
         $cmdArgs = array_merge($cmdArgs, ["-iname", escapeshellarg($pattern),
-            "-print0", "|", "head", "-z", "-n", self::SEARCH_LIMIT]);
-        $cmd = new \OMV\System\Process("find", $cmdArgs);
+            "-print0", "2>/dev/null", "|", "head", "-z", "-n",
+            self::SEARCH_LIMIT, "|",
+            "base64", "-w", "0"]);
+        // Search as the calling user, so folders it may not read are
+        // skipped.
+        $cmd = $this->userCommand($context, "find", $cmdArgs);
         $cmd->setQuiet(true);
         $cmd->execute($output);
         $result = [];
-        foreach (explode("\0", implode("\n", $output)) as $absPath) {
+        foreach (explode("\0", strval(base64_decode(implode("",
+            $output)))) as $absPath) {
             if (($absPath === "") || (!file_exists($absPath) &&
                 !is_link($absPath))) {
                 continue;
@@ -1030,6 +1188,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         $this->validateMethodParams($params, "rpc.filemanager.mkdir");
         list($rootReal, $relPath, $dir) = $this->resolve(
             $params['uuid'], $params['path'], $context, true);
+        $this->assertAccess($context, $rootReal, $dir, ["-w", "-x"]);
         $name = $this->validateName($params['name']);
         $target = build_path(DIRECTORY_SEPARATOR, $dir, $name);
         if (file_exists($target) || is_link($target)) {
@@ -1052,6 +1211,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         $this->validateMethodParams($params, "rpc.filemanager.mkdir");
         list($rootReal, $relPath, $dir) = $this->resolve(
             $params['uuid'], $params['path'], $context, true);
+        $this->assertAccess($context, $rootReal, $dir, ["-w", "-x"]);
         $name = $this->validateName($params['name']);
         $target = build_path(DIRECTORY_SEPARATOR, $dir, $name);
         $fh = @fopen($target, "x");
@@ -1078,6 +1238,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             throw new \OMV\Exception("The shared folder root cannot be "
                 . "renamed.");
         }
+        $this->assertRemovable($context, $rootReal, $src, false);
         $name = $this->validateName($params['name']);
         $target = build_path(DIRECTORY_SEPARATOR, dirname($src), $name);
         if (file_exists($target) || is_link($target)) {
@@ -1134,6 +1295,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         $permanent = boolvalEx(array_value($params, "permanent", false));
         if (!$permanent && boolvalEx($this->settings()['usetrash']) &&
             !$this->isInTrash($relPath)) {
+            $this->assertRemovable($context, $rootReal, $path, true);
             $trashRel = $this->trashRoot($context) . "/" . $relPath;
             $trashParent = $this->mkdirInherit($rootReal,
                 dirname($trashRel), $context);
@@ -1141,10 +1303,18 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
                 $trashParent, basename($trashRel)), ".~%d~");
             $this->moveEntry($path, $trashPath);
             // Refresh the time stamp so the trash can be cleaned up by
-            // age, like the Samba `recycle:touch` option.
-            @touch($trashPath);
+            // age, like the Samba `recycle:touch` option. touch() follows
+            // symlinks and would create a missing link target, possibly
+            // outside the shared folder.
+            if (!is_link($trashPath)) {
+                @touch($trashPath);
+            }
             $this->audit($context, "trash", $params['uuid'], $relPath);
             return;
+        }
+        $this->assertRemovable($context, $rootReal, $path, false);
+        if (is_dir($path) && !is_link($path)) {
+            $this->assertTreeAccess($context, $rootReal, $path, true);
         }
         $this->removeRecursive($path);
         $this->audit($context, "delete", $params['uuid'], $relPath);
@@ -1167,6 +1337,19 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             throw new \OMV\Exception("The item is not in the trash.");
         }
         $origRel = preg_replace('/\.~\d+~$/', "", $parts[2]);
+        $this->assertRemovable($context, $rootReal, $path, true);
+        // The caller must be able to create the item, or its first
+        // missing parent folder, at the original location.
+        $ancestor = $rootReal;
+        if (dirname($origRel) !== ".") {
+            $ancestor = build_path(DIRECTORY_SEPARATOR, $rootReal,
+                dirname($origRel));
+            while (($ancestor !== $rootReal) && !file_exists($ancestor) &&
+                !is_link($ancestor)) {
+                $ancestor = dirname($ancestor);
+            }
+        }
+        $this->assertAccess($context, $rootReal, $ancestor, ["-w", "-x"]);
         // Recreate missing parent folders. mkdirInherit() refuses to
         // descend through symlinks, so the target stays inside the root.
         $target = build_path(DIRECTORY_SEPARATOR, $this->mkdirInherit(
@@ -1195,12 +1378,28 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         if (is_link($path) || !is_dir($path)) {
             return;
         }
+        // Users can only remove what the file system permissions allow;
+        // other items stay in the trash.
+        $failed = [];
         foreach (new \DirectoryIterator($path) as $item) {
-            if (!$item->isDot()) {
+            if ($item->isDot()) {
+                continue;
+            }
+            try {
+                if ($item->isDir() && !$item->isLink()) {
+                    $this->assertTreeAccess($context, $rootReal,
+                        $item->getPathname(), true);
+                }
                 $this->removeRecursive($item->getPathname());
+            } catch (\Exception $e) {
+                $failed[] = $item->getFilename();
             }
         }
         $this->audit($context, "emptytrash", $params['uuid'], $relPath);
+        if (!empty($failed)) {
+            throw new \OMV\Exception("The following items could not be " .
+                "deleted: %s", implode(", ", $failed));
+        }
     }
 
     /* ------------------------------------------------------------------
@@ -1230,6 +1429,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         if (!is_file($file)) {
             throw new \OMV\Exception("The file does not exist.");
         }
+        $this->assertAccess($context, $rootReal, $file, ["-r"]);
         $maxSize = intval($this->settings()['maxeditsize']);
         if (filesize($file) > ($maxSize * 1024 * 1024)) {
             throw new \OMV\Exception("The file is larger than %d MiB and " .
@@ -1250,7 +1450,9 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             "path" => $params['path'],
             "name" => basename($file),
             "location" => "/" . $relPath,
-            "content" => $content
+            "content" => $content,
+            // Passed back by setFileContent() to detect concurrent changes.
+            "etag" => sha1($content)
         ];
     }
 
@@ -1258,6 +1460,8 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
      * Save a file atomically: write a temporary file next to it, copy the
      * owner, mode and ACLs, then rename it over the original. Files with
      * multiple hard links are written in place to keep the links intact.
+     * If `etag` is given, the file is only saved if it was not changed
+     * since it was opened, e.g. by another user or via SMB.
      */
     public function setFileContent($params, $context)
     {
@@ -1269,6 +1473,13 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             $params['uuid'], $params['path'], $context, true);
         if (!is_file($file)) {
             throw new \OMV\Exception("The file does not exist.");
+        }
+        $this->assertAccess($context, $rootReal, $file, ["-w"]);
+        $etag = strval(array_value($params, "etag", ""));
+        if (($etag !== "") && (sha1_file($file) !== $etag)) {
+            throw new \OMV\Exception("'%s' was changed by someone else " .
+                "after it was opened. Copy your changes, then reopen the " .
+                "file and apply them again.", basename($file));
         }
         clearstatcache(true, $file);
         $stat = stat($file);
@@ -1340,13 +1551,15 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         if (!is_file($file)) {
             throw new \OMV\Exception("The file does not exist.");
         }
+        $this->assertAccess($context, $rootReal, $file, ["-r"]);
         list($filePath, $unlink) = $this->prepareDownloadFile($file);
         $this->audit($context, "download", $params['uuid'], $relPath);
         return [
             "filename" => basename($file),
             "filepath" => $filePath,
             "headers" => [
-                "Content-Type" => "application/octet-stream"
+                "Content-Type" => "application/octet-stream",
+                "X-Content-Type-Options" => "nosniff"
             ],
             "unlink" => $unlink
         ];
@@ -1368,6 +1581,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             if (!file_exists($path)) {
                 throw new \OMV\Exception("'%s' does not exist.", $relPath);
             }
+            $this->assertTreeAccess($context, $rootReal, $path, false);
             $items[] = [$relPath, $path];
         }
         $name = (count($items) === 1) ? (($items[0][0] === ".") ?
@@ -1439,6 +1653,11 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         };
         foreach ($paths as $path) {
             $base = basename($path);
+            // Like below, never follow links, they may point outside the
+            // shared folder. Callers pass canonical paths or refuse links.
+            if (is_link($path)) {
+                continue;
+            }
             if (!is_dir($path)) {
                 $addFile($path, $base);
                 continue;
@@ -1473,7 +1692,9 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
      * Only content types that cannot run script in the WebGUI origin are
      * served as is; any textual content (including HTML and SVG) is sent
      * as text/plain. Everything else is sent as attachment, so the
-     * browser downloads it.
+     * browser downloads it. As a second line of defence, content sniffing
+     * is disabled and the document is sandboxed (except PDFs, whose
+     * built-in browser viewers do not work in a sandbox).
      */
     public function preview($params, $context)
     {
@@ -1486,6 +1707,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         if (!is_file($file)) {
             throw new \OMV\Exception("The file does not exist.");
         }
+        $this->assertAccess($context, $rootReal, $file, ["-r"]);
         $mime = strval(@mime_content_type($file));
         $safe = ["image/png", "image/jpeg", "image/gif", "image/webp",
             "image/bmp", "image/avif", "image/x-icon",
@@ -1503,16 +1725,21 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             $contentType = "application/octet-stream";
             $disposition = "attachment";
         }
+        $headers = [
+            "Content-Type" => $contentType,
+            "Content-Disposition" => sprintf("%s; filename=\"%s\"",
+                $disposition, addcslashes(basename($file), "\"\\")),
+            "Cache-Control" => "private, no-store",
+            "X-Content-Type-Options" => "nosniff"
+        ];
+        if ($contentType !== "application/pdf") {
+            $headers['Content-Security-Policy'] = "sandbox";
+        }
         list($filePath, $unlink) = $this->prepareDownloadFile($file);
         $this->audit($context, "preview", $params['uuid'], $relPath);
         return [
             "filepath" => $filePath,
-            "headers" => [
-                "Content-Type" => $contentType,
-                "Content-Disposition" => sprintf("%s; filename=\"%s\"",
-                    $disposition, addcslashes(basename($file), "\"\\")),
-                "Cache-Control" => "private, no-store"
-            ],
+            "headers" => $headers,
             "unlink" => $unlink
         ];
     }
@@ -1533,6 +1760,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         if (!is_dir($dir)) {
             throw new \OMV\Exception("The target folder does not exist.");
         }
+        $this->assertAccess($context, $rootReal, $dir, ["-w", "-x"]);
         // Only accept chunks that PHP-FPM stored for this request, never
         // an arbitrary file named by the caller.
         $chunkFile = realpath($params['filepath']);
@@ -1554,10 +1782,16 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             if ((file_exists($target) || is_link($target)) && !$overwrite) {
                 throw new \OMV\Exception("'%s' already exists.", $name);
             }
-            if (is_link($part)) {
-                unlink($part);
+            if (is_file($target) && !is_link($target)) {
+                $this->assertAccess($context, $rootReal, $target, ["-w"]);
             }
-            $out = fopen($part, "wb");
+            $this->purgeStaleParts($dir);
+            if (file_exists($part) || is_link($part)) {
+                @unlink($part);
+            }
+            // Create the file exclusively, which never follows a symlink
+            // planted at its name.
+            $out = @fopen($part, "xb");
         } else {
             clearstatcache(true, $part);
             if (is_link($part) || !is_file($part) ||
@@ -1565,7 +1799,23 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
                 throw new \OMV\Exception("The upload of '%s' is out of " .
                     "sync. Please try again.", $name);
             }
-            $out = fopen($part, "ab");
+            // Do not use mode "a", which would create a missing symlink
+            // target if the file was replaced in the meantime. Then make
+            // sure the opened file is the one checked above.
+            $out = @fopen($part, "r+b");
+            if (false !== $out) {
+                $fstat = fstat($out);
+                clearstatcache(true, $part);
+                $lstat = @lstat($part);
+                if ((false === $lstat) || is_link($part) ||
+                    ($fstat['dev'] !== $lstat['dev']) ||
+                    ($fstat['ino'] !== $lstat['ino'])) {
+                    fclose($out);
+                    throw new \OMV\Exception("The upload of '%s' is out " .
+                        "of sync. Please try again.", $name);
+                }
+                fseek($out, 0, SEEK_END);
+            }
         }
         if (false === $out) {
             throw new \OMV\Exception("Failed to write '%s'.", $name);
@@ -1629,6 +1879,11 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
                 throw new \OMV\Exception("The shared folder root cannot " .
                     "be copied or moved.");
             }
+            if ($move) {
+                $this->assertRemovable($context, $rootReal, $path, true);
+            } else {
+                $this->assertTreeAccess($context, $rootReal, $path, false);
+            }
             $sources[] = [$relPath, $path];
         }
         list($destRoot, $destRel, $dest) = $this->resolveRel(
@@ -1637,6 +1892,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             throw new \OMV\Exception("The destination folder does not " .
                 "exist.");
         }
+        $this->assertAccess($context, $destRoot, $dest, ["-w", "-x"]);
         return $this->execBgProc(function ($bgStatusFilename,
             $bgOutputFilename) use ($params, $context, $move, $overwrite,
             $sources, $dest, $destRel) {
@@ -1743,8 +1999,8 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
                         "--", escapeshellarg(implode(",", $sym)),
                         escapeshellarg($path)]);
                     $cmd->setRedirect2to1();
-                    $this->exec($cmd->getCommandLine(), $output,
-                        $bgOutputFilename);
+                    $failed = (0 !== $this->exec($cmd->getCommandLine(),
+                        $output, $bgOutputFilename));
                     $special = ($mode >> 9) & 7;
                     $cmd = new \OMV\System\Process("find", [
                         escapeshellarg($path), "-type", "d", "-exec",
@@ -1753,8 +2009,11 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
                             (($special & 2) ? "g+s" : "g-s") . "," .
                             (($special & 1) ? "+t" : "-t")))), "{}", "+"]);
                     $cmd->setRedirect2to1();
-                    $this->exec($cmd->getCommandLine(), $output,
-                        $bgOutputFilename);
+                    if ((0 !== $this->exec($cmd->getCommandLine(), $output,
+                        $bgOutputFilename)) || $failed) {
+                        throw new \OMV\Exception("Failed to change the " .
+                            "mode of '%s'.", $relPath);
+                    }
                 }
                 $this->audit($context, "chmod", $params['uuid'], $relPath,
                     sprintf("%04o%s", $mode, $recursive ? " (recursive)" :
@@ -1837,11 +2096,20 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
                 throw new \OMV\Exception("All selected items must be in " .
                     "the same folder.");
             }
+            // tar stores symlinks as such, but a ZIP archive would get
+            // the content of the link target, which may be outside the
+            // shared folder.
+            if (($params['format'] === "zip") && is_link($path)) {
+                throw new \OMV\Exception("'%s' is a symbolic link and " .
+                    "cannot be added to a ZIP archive.", $relPath);
+            }
+            $this->assertTreeAccess($context, $rootReal, $path, false);
             $sources[] = $path;
         }
         // The archive is written to the parent folder, so check write
         // access there.
         $this->resolveRel($params['uuid'], $parentRel, $context, true);
+        $this->assertAccess($context, $rootReal, $parent, ["-w", "-x"]);
         $ext = ($params['format'] === "zip") ? ".zip" : ".tar.gz";
         $name = $this->validateName(preg_replace("/(\.zip|\.tar\.gz)$/i",
             "", $params['name']) . $ext);
@@ -1849,10 +2117,22 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         if (file_exists($target) || is_link($target)) {
             throw new \OMV\Exception("'%s' already exists.", $name);
         }
+        $part = $target . self::PART_SUFFIX;
+        if (file_exists($part) || is_link($part)) {
+            throw new \OMV\Exception("'%s' already exists.",
+                basename($part));
+        }
         return $this->execBgProc(function ($bgStatusFilename,
             $bgOutputFilename) use ($params, $context, $sources, $parent,
-            $parentRel, $target, $name) {
-            $part = $target . self::PART_SUFFIX;
+            $parentRel, $target, $name, $part) {
+            // Create the partial file exclusively, so tar never writes
+            // through a symlink planted at its name.
+            $fh = @fopen($part, "x");
+            if (false === $fh) {
+                throw new \OMV\Exception("Failed to create '%s'.",
+                    basename($part));
+            }
+            fclose($fh);
             try {
                 if ($params['format'] === "zip") {
                     $this->writeZip($part, $sources, function ($entry) use (
@@ -1909,6 +2189,9 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             throw new \OMV\Exception("'%s' is not a supported archive.",
                 basename($file));
         }
+        $this->assertAccess($context, $rootReal, $file, ["-r"]);
+        $this->assertAccess($context, $rootReal, dirname($file),
+            ["-w", "-x"]);
         $ext = $this->extOf($file);
         $base = substr(basename($file), 0, -(strlen($ext) + 1));
         $targetDir = $this->uniquePath(build_path(DIRECTORY_SEPARATOR,
@@ -1975,6 +2258,10 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         $this->validateMethodParams($params, "rpc.filemanager.path");
         list($rootReal, $relPath, $path) = $this->resolve(
             $params['uuid'], $params['path'], $context, false, false);
+        // Looking up the details needs search (`x`) access to the folder
+        // containing the item.
+        $this->assertAccess($context, $rootReal, ($path === $rootReal) ?
+            $path : dirname($path), ["-x"]);
         return $this->execBgProc(function ($bgStatusFilename,
             $bgOutputFilename) use ($params, $relPath, $path) {
             $out = function ($label, $value) use ($bgOutputFilename) {
@@ -1995,7 +2282,9 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
                 escapeshellarg($path)]);
             $cmd->setQuiet(true);
             $out("Type", trim($cmd->execute()));
-            if (!is_dir($path)) {
+            // Do not look behind symlinks, their target may be outside
+            // the shared folder.
+            if (!$isLink && !is_dir($path)) {
                 $out("MIME type", strval(@mime_content_type($path)));
             }
             $out("Owner", sprintf("%s (%d)", $this->userName($stat['uid']),
@@ -2008,11 +2297,14 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             $out("Changed", date("c", $stat['ctime']));
             $out("Inode", $stat['ino']);
             $out("Hard links", $stat['nlink']);
-            $cmd = new \OMV\System\Process("getfacl", ["--omit-header",
-                "--absolute-names", "--skip-base", "--",
-                escapeshellarg($path)]);
-            $cmd->setQuiet(true);
-            $cmd->execute($output);
+            $output = [];
+            if (!$isLink) {
+                $cmd = new \OMV\System\Process("getfacl", ["--omit-header",
+                    "--absolute-names", "--skip-base", "--",
+                    escapeshellarg($path)]);
+                $cmd->setQuiet(true);
+                $cmd->execute($output);
+            }
             $acl = trim(implode(PHP_EOL, $output));
             if ($acl !== "") {
                 $this->bgOutput($bgOutputFilename, "ACL:");
@@ -2044,9 +2336,44 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
                     $stat['size']), $stat['size']));
             }
             $cmd = new \OMV\System\Process("df", ["--output=source,target",
-                "--", escapeshellarg($path), "|", "tail", "-n", "1"]);
+                "--", escapeshellarg($isLink ? dirname($path) : $path), "|",
+                "tail", "-n", "1"]);
             $cmd->setQuiet(true);
             $out("File system", trim(strval($cmd->execute())));
+            return "";
+        });
+    }
+
+    /**
+     * Calculate the checksums of files, printed like sha256sum(1) does.
+     */
+    public function checksum($params, $context)
+    {
+        $this->validateMethodContext($context, [
+            "role" => OMV_ROLE_EVERYONE
+        ]);
+        $this->validateMethodParams($params, "rpc.filemanager.checksum");
+        $files = [];
+        foreach ($this->splitTokens($params['paths']) as $token) {
+            list($rootReal, $relPath, $path) = $this->resolve(
+                $params['uuid'], $token, $context);
+            if (!is_file($path)) {
+                throw new \OMV\Exception("'%s' is not a file.", $relPath);
+            }
+            $this->assertAccess($context, $rootReal, $path, ["-r"]);
+            $files[] = [$relPath, $path];
+        }
+        return $this->execBgProc(function ($bgStatusFilename,
+            $bgOutputFilename) use ($params, $files) {
+            foreach ($files as list($relPath, $path)) {
+                $hash = hash_file($params['algorithm'], $path);
+                if (false === $hash) {
+                    throw new \OMV\Exception("Failed to read '%s'.",
+                        $relPath);
+                }
+                $this->bgOutput($bgOutputFilename, sprintf("%s  %s", $hash,
+                    $relPath));
+            }
             return "";
         });
     }

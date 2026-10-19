@@ -21,6 +21,11 @@ data:
       - type: hidden
         name: path
         value: "{{ _routeParams.path }}"
+      # Fingerprint of the loaded content; saving fails if the file was
+      # changed in the meantime.
+      - type: hidden
+        name: etag
+        value: ""
       - type: textInput
         name: location
         label: _("File")

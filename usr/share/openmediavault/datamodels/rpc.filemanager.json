@@ -250,6 +250,37 @@
         "content": {
           "type": "string",
           "required": true
+        },
+        "etag": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.checksum",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "paths": {
+          "type": "string",
+          "required": true
+        },
+        "algorithm": {
+          "type": "string",
+          "enum": [
+            "md5",
+            "sha1",
+            "sha256",
+            "sha512"
+          ],
+          "required": true
         }
       }
     }

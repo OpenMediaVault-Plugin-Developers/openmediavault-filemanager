@@ -128,6 +128,53 @@ data:
                 params:
                   uuid: "{{ _routeParams.uuid }}"
                   path: "{{ _selected[0].path }}"
+      - type: iconButton
+        icon: mdi:fingerprint
+        tooltip: _("Checksum")
+        enabledConstraints:
+          minSelected: 1
+          constraint:
+            - operator: eq
+              arg0:
+                prop: type
+              arg1: file
+        execute:
+          type: formDialog
+          formDialog:
+            title: _("Checksum")
+            fields:
+              - type: hidden
+                name: uuid
+                value: "{{ _routeParams.uuid }}"
+              - type: hidden
+                name: paths
+                value: '{{ _selected | join(",", "path") }}'
+              - type: select
+                name: algorithm
+                label: _("Algorithm")
+                value: sha256
+                store:
+                  data:
+                    - ["md5", "MD5"]
+                    - ["sha1", "SHA-1"]
+                    - ["sha256", "SHA-256"]
+                    - ["sha512", "SHA-512"]
+            buttons:
+              submit:
+                text: _("Calculate")
+                execute:
+                  type: taskDialog
+                  taskDialog:
+                    config:
+                      title: _("Checksum")
+                      startOnInit: true
+                      request:
+                        service: FileManager
+                        method: checksum
+                        params:
+                          uuid: "{{ uuid }}"
+                          paths: "{{ paths }}"
+                          algorithm: "{{ algorithm }}"
       - template: delete
         execute:
           type: request

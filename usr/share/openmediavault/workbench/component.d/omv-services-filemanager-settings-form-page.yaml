@@ -65,7 +65,7 @@ data:
       - type: checkbox
         name: allowusers
         label: _("Allow access")
-        hint: _("Let users that log in to the web interface browse the shared folders according to their shared folder privileges (read-only or read/write). Changing permissions and owners stays restricted to administrators.")
+        hint: _("Let users that log in to the web interface browse the shared folders according to their shared folder privileges (read-only or read/write). Like with SMB, the file system permissions and ACLs apply as well. Changing permissions and owners stays restricted to administrators.")
         value: false
     buttons:
       - template: submit
