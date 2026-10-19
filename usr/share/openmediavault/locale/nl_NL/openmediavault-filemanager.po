@@ -3,6 +3,9 @@
 # This file is distributed under the same license as the openmediavault-filemanager package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 # 
+# Translators:
+# Stephan Paternotte <stephan@paternottes.net>, 2026
+# 
 #, fuzzy
 msgid ""
 msgstr ""
@@ -10,6 +13,7 @@ msgstr ""
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-10-18 15:25+0000\n"
 "PO-Revision-Date: 2026-10-18 15:25+0000\n"
+"Last-Translator: Stephan Paternotte <stephan@paternottes.net>, 2026\n"
 "Language-Team: Dutch (https://app.transifex.com/openmediavault-plugin-developers/teams/1854/nl/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -18,336 +22,361 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 msgid "Access"
-msgstr ""
+msgstr "Toegang"
 
 msgid "Action"
-msgstr ""
+msgstr "Actie"
 
 msgid "Allow access"
-msgstr ""
+msgstr "Toegang verlenen"
 
 msgid "Apply"
-msgstr ""
+msgstr "Toepassen"
 
 msgid ""
 "Apply to the contents of folders, too. Execute permissions are only given to"
 " folders and to files that are already executable."
 msgstr ""
+"Pas dit ook toe op de inhoud van mappen. Uitvoeringsrechten worden alleen "
+"verleend aan mappen en aan bestanden die al uitvoerbaar zijn."
 
 msgid "Archive"
-msgstr ""
+msgstr "Archief"
 
 msgid "Archive name"
-msgstr ""
+msgstr "Archiefnaam"
 
 msgid "Audit log"
-msgstr ""
+msgstr "Auditlogboek"
 
 msgid "Broken link"
-msgstr ""
+msgstr "Verbroken link"
 
 msgid "Browse"
-msgstr ""
+msgstr "Bladeren"
 
 msgid "Browse as tree"
-msgstr ""
+msgstr "Bladeren als boomstructuur"
 
 msgid "Change owner"
-msgstr ""
+msgstr "Eigenaar aanpassen"
 
 msgid "Change owner ..."
-msgstr ""
+msgstr "Eigenaar aanpassen…"
 
 msgid "Change permissions"
-msgstr ""
+msgstr "Machtigingen aanpassen"
 
 msgid "Change permissions ..."
-msgstr ""
+msgstr "Machtigingen aanpassen…"
 
 msgid "Changing owner ..."
-msgstr ""
+msgstr "Eigenaar aanpassen…"
 
 msgid "Changing permissions ..."
-msgstr ""
+msgstr "Machtigingen aanpassen…"
 
 msgid "Comment"
-msgstr ""
+msgstr "Commentaar"
 
 msgid "Compress"
-msgstr ""
+msgstr "Comprimeren"
 
 msgid "Compress ..."
-msgstr ""
+msgstr "Comprimeren…"
 
 msgid "Compressing ..."
-msgstr ""
+msgstr "Comprimeren…"
 
 msgid "Content"
-msgstr ""
+msgstr "Inhoud"
 
 msgid "Copy"
-msgstr ""
+msgstr "Kopiëren"
 
 msgid "Copy or move"
-msgstr ""
+msgstr "Kopiëren of verplaatsen"
 
 msgid "Copy to ..."
-msgstr ""
+msgstr "Kopiëren naar…"
 
 msgid "Copying ..."
-msgstr ""
+msgstr "Kopiëren naar…"
 
 msgid "Create"
-msgstr ""
+msgstr "Aanmaken"
 
 msgid "Date & Time"
-msgstr ""
+msgstr "Datum & Tijd"
 
 msgid "Delete permanently"
-msgstr ""
+msgstr "Permanent verwijderen"
 
 msgid "Deleted."
-msgstr ""
+msgstr "Verwijderd."
 
 msgid "Deleting ..."
-msgstr ""
+msgstr "Verwijderen…"
 
 msgid "Details"
-msgstr ""
+msgstr "Details"
 
 msgid ""
 "Do you really want to permanently delete all items in the trash of '{{ "
 "_selected[0].name }}'?"
 msgstr ""
+"Wilt u werkelijk alle items in de prullenbak van '{{ _selected[0].name }}' "
+"permanent verwijderen?"
 
 msgid ""
 "Do you really want to permanently delete all items in the trash of this "
 "shared folder?"
 msgstr ""
+"Wilt u echt alle items in de prullenbak van deze gedeelde map permanent "
+"verwijderen?"
 
 msgid ""
 "Do you really want to permanently delete the selected item(s)? This cannot "
 "be undone."
 msgstr ""
+"Wilt u de geselecteerde items echt permanent verwijderen? Dit kan niet "
+"ongedaan worden gemaakt."
 
 msgid "Download"
-msgstr ""
+msgstr "Downloaden"
 
 msgid "Edit"
-msgstr ""
+msgstr "Bewerken"
 
 msgid "Editor size limit"
-msgstr ""
+msgstr "Editor grootte limiet"
 
 msgid "Empty trash"
-msgstr ""
+msgstr "Prullenbak legen"
 
 msgid "Emptying trash ..."
-msgstr ""
+msgstr "Prullenbak legen…"
 
 msgid "Enabled"
-msgstr ""
+msgstr "Ingeschakeld"
 
 msgid "Enter an octal mode, e.g. 0775."
-msgstr ""
+msgstr "Voer een octale waarde in, bijv. 0775."
 
 msgid "Extract"
-msgstr ""
+msgstr "Uitpakken"
 
 msgid "Extracting ..."
-msgstr ""
+msgstr "Uitpakken…"
 
 msgid "File"
-msgstr ""
+msgstr "Bestand"
 
 msgid "File Manager"
-msgstr ""
+msgstr "Bestandsbeheerder"
 
 msgid "File created."
-msgstr ""
+msgstr "Bestand aangemaakt."
 
 msgid "Folder"
-msgstr ""
+msgstr "Map"
 
 msgid "Folder created."
-msgstr ""
+msgstr "Map aangemaakt."
 
 msgid "Format"
-msgstr ""
+msgstr "Formaat"
 
 msgid "Group"
-msgstr ""
+msgstr "Groep"
 
 msgid ""
 "Let users that log in to the web interface browse the shared folders "
 "according to their shared folder privileges (read-only or read/write). "
 "Changing permissions and owners stays restricted to administrators."
 msgstr ""
+"Laat gebruikers die inloggen op de webinterface door de gedeelde mappen "
+"bladeren op basis van hun gedeelde mappenrechten (alleen-lezen of "
+"lezen/schrijven). Het wijzigen van machtigingen en eigenaren blijft beperkt "
+"tot beheerders."
 
 msgid "Link target"
-msgstr ""
+msgstr "Doel van de koppeling"
 
 msgid "Location"
-msgstr ""
+msgstr "Locatie"
 
 msgid ""
 "Log every change (who, what, where) to the system journal. Shown under "
 "Diagnostics | System Logs | File Manager."
 msgstr ""
+"Registreer elke wijziging (wie, wat, waar) in het systeemjournaal. Te vinden"
+" onder Diagnostiek | Systeemlogboeken | Bestandsbeheer."
 
 msgid "Maximum size in MiB of files that can be opened in the editor."
 msgstr ""
+"Maximale grootte in MiB van bestanden die in de editor kunnen worden "
+"geopend."
 
 msgid "Mode"
-msgstr ""
+msgstr "Modus"
 
 msgid "Modified"
-msgstr ""
+msgstr "Gewijzigd"
 
 msgid "Move"
-msgstr ""
+msgstr "Verplaatsen"
 
 msgid ""
 "Move deleted items to the '.recycle' folder of the shared folder instead of "
 "deleting them permanently. This is the same folder the Samba recycle bin "
 "uses."
 msgstr ""
+"Verplaats verwijderde items naar de map '.recycle' van de gedeelde map in "
+"plaats van ze permanent te verwijderen. Dit is dezelfde map die de Samba "
+"recycle bin gebruikt."
 
 msgid "Move to ..."
-msgstr ""
+msgstr "Verplaatsen naar…"
 
 msgid "Moving ..."
-msgstr ""
+msgstr "Verplaatsen…"
 
 msgid "Name"
-msgstr ""
+msgstr "Naam"
 
 msgid "New file"
-msgstr ""
+msgstr "Nieuw bestand"
 
 msgid "New folder"
-msgstr ""
+msgstr "Nieuwe map"
 
 msgid "New name"
-msgstr ""
+msgstr "Nieuwe naam"
 
 msgid "Non-administrative users"
-msgstr ""
+msgstr "Niet-administratieve gebruikers"
 
 msgid "Octal mode, e.g. 0775 or 0664."
-msgstr ""
+msgstr "Octale waarde, bijv. 0775 of 0664."
 
 msgid "Only allow browsing, previewing and downloading."
-msgstr ""
+msgstr "Alleen bladeren, voorbeelden en downloaden toestaan."
 
 msgid "Open"
-msgstr ""
+msgstr "Openen"
 
 msgid "Open folder"
-msgstr ""
+msgstr "Map openen"
 
 msgid "Open trash"
-msgstr ""
+msgstr "Prullenbak openen"
 
 msgid "Overwrite existing items"
-msgstr ""
+msgstr "Bestaande items overschrijven"
 
 msgid "Owner"
-msgstr ""
+msgstr "Eigenaar"
 
 msgid "Parent"
-msgstr ""
+msgstr "Ouder"
 
 msgid "Part of the name, case-insensitive. Wildcards (* and ?) are supported."
 msgstr ""
+"Een deel van de naam, hoofdletterongevoelig. Wildcards (* en ?) worden "
+"ondersteund."
 
 msgid "Permissions"
-msgstr ""
+msgstr "Machtigingen"
 
 msgid "Preview"
-msgstr ""
+msgstr "Voorbeeld"
 
 msgid "Properties"
-msgstr ""
+msgstr "Eigenschappen"
 
 msgid "Read-only"
-msgstr ""
+msgstr "Alleen-lezen"
 
 msgid "Read/Write"
-msgstr ""
+msgstr "Lezen/Schrijven"
 
 msgid "Recursive"
-msgstr ""
+msgstr "Recursief"
 
 msgid "Rename"
-msgstr ""
+msgstr "Naam wijzigen"
 
 msgid "Renamed."
-msgstr ""
+msgstr "Naam gewijzigd."
 
 msgid "Restore"
-msgstr ""
+msgstr "Herstellen"
 
 msgid "Restored."
-msgstr ""
+msgstr "Hersteld."
 
 msgid "Restoring ..."
-msgstr ""
+msgstr "Herstellen…"
 
 msgid "Saved file."
-msgstr ""
+msgstr "Bestand opgeslagen."
 
 msgid "Saved settings."
-msgstr ""
+msgstr "Instellingen opgeslagen."
 
 msgid "Search"
-msgstr ""
+msgstr "Zoeken"
 
 msgid "Search in this folder and its subfolders"
-msgstr ""
+msgstr "Zoeken in deze map en zijn submappen"
 
 msgid "Settings"
-msgstr ""
+msgstr "Instellingen"
 
 msgid "Shared folder"
-msgstr ""
+msgstr "Gedeelde map"
 
 msgid "Shared folders"
-msgstr ""
+msgstr "Gedeelde mappen"
 
 msgid "Show files and folders whose name starts with a dot."
-msgstr ""
+msgstr "Bestanden en mappen weergeven waarvan de naam begint met een punt."
 
 msgid "Show hidden files"
-msgstr ""
+msgstr "Verborgen bestanden weergeven"
 
 msgid "Size"
-msgstr ""
+msgstr "Grootte"
 
 msgid ""
 "The destination folder, relative to the shared folder. Leave empty for the "
 "top level."
 msgstr ""
+"De doelmap, ten opzichte van de gedeelde map. Laat leeg voor het hoogste "
+"niveau."
 
 msgid ""
 "The shared folders available in the file manager. Select none to make all "
 "shared folders available."
 msgstr ""
+"De gedeelde mappen die beschikbaar zijn in bestandsbeheer. Selecteer geen om"
+" alle gedeelde mappen beschikbaar te maken."
 
 msgid "Trash"
-msgstr ""
+msgstr "Prullenbak"
 
 msgid "Trash emptied."
-msgstr ""
+msgstr "Prullenbak geleegd."
 
 msgid "Type"
-msgstr ""
+msgstr "Type"
 
 msgid "Upload files"
-msgstr ""
+msgstr "Bestanden uploaden"
 
 msgid "Use trash"
-msgstr ""
+msgstr "Prullenbak gebruiken"
 
 msgid "User"
-msgstr ""
+msgstr "Gebruiker"
