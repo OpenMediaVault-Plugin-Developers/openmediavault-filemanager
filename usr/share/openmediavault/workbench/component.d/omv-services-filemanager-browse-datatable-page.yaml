@@ -593,13 +593,14 @@ data:
               - type: select
                 name: algorithm
                 label: _("Algorithm")
-                value: sha256
                 store:
                   data:
                     - ["md5", "MD5"]
                     - ["sha1", "SHA-1"]
                     - ["sha256", "SHA-256"]
                     - ["sha512", "SHA-512"]
+                validators:
+                  required: true
             buttons:
               submit:
                 text: _("Calculate")
