@@ -149,7 +149,7 @@ data:
             icon: mdi:upload
             execute:
               type: url
-              url: "/externalRedirect/{{ ('filemanager-upload.php?uuid=' ~ _routeParams.uuid ~ '&path=' ~ _routeParams.path) | encodeuricomponent }}"
+              url: "/externalRedirect/{{ ('filemanager-upload.php?uuid=' ~ (_routeParams.uuid or _selected[0].uuid) ~ '&path=' ~ (_routeParams.path or _selected[0].dirpath)) | encodeuricomponent }}"
           - text: _("New folder")
             icon: mdi:folder-plus-outline
             execute:
@@ -161,10 +161,10 @@ data:
                   # target is passed via hidden fields.
                   - type: hidden
                     name: uuid
-                    value: "{{ _routeParams.uuid }}"
+                    value: "{{ _routeParams.uuid or _selected[0].uuid }}"
                   - type: hidden
                     name: path
-                    value: "{{ _routeParams.path }}"
+                    value: "{{ _routeParams.path or _selected[0].dirpath }}"
                   - type: textInput
                     name: name
                     label: _("Name")
@@ -188,10 +188,10 @@ data:
                 fields:
                   - type: hidden
                     name: uuid
-                    value: "{{ _routeParams.uuid }}"
+                    value: "{{ _routeParams.uuid or _selected[0].uuid }}"
                   - type: hidden
                     name: path
-                    value: "{{ _routeParams.path }}"
+                    value: "{{ _routeParams.path or _selected[0].dirpath }}"
                   - type: textInput
                     name: name
                     label: _("Name")
@@ -626,10 +626,10 @@ data:
             fields:
               - type: hidden
                 name: uuid
-                value: "{{ _routeParams.uuid }}"
+                value: "{{ _routeParams.uuid or _selected[0].uuid }}"
               - type: hidden
                 name: path
-                value: "{{ _routeParams.path }}"
+                value: "{{ _routeParams.path or _selected[0].dirpath }}"
               - type: textInput
                 name: query
                 label: _("Name")
@@ -670,7 +670,7 @@ data:
               type: url
               # The path token of ".recycle", on the other folder route
               # than the current one, see getList.
-              url: "/services/filemanager/{{ 'browse' if _routeUrlSegments[2] == 'open' else 'open' }}/{{ _routeParams.uuid }}/LnJlY3ljbGU"
+              url: "/services/filemanager/{{ 'browse' if _routeUrlSegments[2] == 'open' else 'open' }}/{{ _routeParams.uuid or _selected[0].uuid }}/LnJlY3ljbGU"
           - text: _("Empty trash")
             icon: mdi:delete-empty-outline
             confirmationDialogConfig:
@@ -682,7 +682,7 @@ data:
                 service: FileManager
                 method: emptyTrash
                 params:
-                  uuid: "{{ _routeParams.uuid }}"
+                  uuid: "{{ _routeParams.uuid or _selected[0].uuid }}"
                 progressMessage: _("Emptying trash ...")
                 successNotification: _("Trash emptied.")
       # Moves the items to the trash (if enabled); asks for confirmation.

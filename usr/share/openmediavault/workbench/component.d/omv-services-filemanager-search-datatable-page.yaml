@@ -69,7 +69,7 @@ data:
         execute:
           type: url
           # Open folders themselves, otherwise the containing folder.
-          url: "/services/filemanager/browse/{{ _routeParams.uuid }}/{{ _selected[0].path if _selected[0].type == 'dir' else _selected[0].dirpath }}"
+          url: "/services/filemanager/browse/{{ _selected[0].uuid }}/{{ _selected[0].path if _selected[0].type == 'dir' else _selected[0].dirpath }}"
       - type: iconButton
         icon: mdi:file-edit-outline
         tooltip: _("Edit")
@@ -82,7 +82,7 @@ data:
                 prop: editable
         execute:
           type: url
-          url: "/services/filemanager/edit/{{ _routeParams.uuid }}/{{ _selected[0].dirpath }}/{{ _selected[0].path }}"
+          url: "/services/filemanager/edit/{{ _selected[0].uuid }}/{{ _selected[0].dirpath }}/{{ _selected[0].path }}"
       - type: iconButton
         icon: mdi:eye-outline
         tooltip: _("Preview")
@@ -96,7 +96,7 @@ data:
               arg1: file
         execute:
           type: url
-          url: '/externalRedirect/{{ (''download.php?service=FileManager&method=preview&params={"uuid":"'' ~ _routeParams.uuid ~ ''","path":"'' ~ path ~ ''"}'') | encodeuricomponent }}'
+          url: '/externalRedirect/{{ (''download.php?service=FileManager&method=preview&params={"uuid":"'' ~ _selected[0].uuid ~ ''","path":"'' ~ path ~ ''"}'') | encodeuricomponent }}'
       - type: iconButton
         icon: mdi:download
         tooltip: _("Download")
@@ -109,7 +109,7 @@ data:
               arg1: ["dir", "file"]
         execute:
           type: url
-          url: '/download?service=FileManager&method={{ "download" if (_selected | length) == 1 else "downloadArchive" }}&params={"uuid":"{{ _routeParams.uuid }}","path":"{{ _selected[0].path }}","paths":"{{ _selected | join(",", "path") }}"}'
+          url: '/download?service=FileManager&method={{ "download" if (_selected | length) == 1 else "downloadArchive" }}&params={"uuid":"{{ _selected[0].uuid }}","path":"{{ _selected[0].path }}","paths":"{{ _selected | join(",", "path") }}"}'
       - type: iconButton
         icon: mdi:information-outline
         tooltip: _("Properties")
@@ -126,7 +126,7 @@ data:
                 service: FileManager
                 method: getProperties
                 params:
-                  uuid: "{{ _routeParams.uuid }}"
+                  uuid: "{{ _selected[0].uuid }}"
                   path: "{{ _selected[0].path }}"
       - type: iconButton
         icon: mdi:fingerprint
@@ -145,7 +145,7 @@ data:
             fields:
               - type: hidden
                 name: uuid
-                value: "{{ _routeParams.uuid }}"
+                value: "{{ _selected[0].uuid }}"
               - type: hidden
                 name: paths
                 value: '{{ _selected | join(",", "path") }}'
@@ -182,5 +182,5 @@ data:
             service: FileManager
             method: delete
             params:
-              uuid: "{{ _routeParams.uuid }}"
+              uuid: "{{ uuid }}"
               path: "{{ path }}"
