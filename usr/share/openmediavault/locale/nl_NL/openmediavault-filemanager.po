@@ -11,7 +11,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: openmediavault-filemanager\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-18 15:25+0000\n"
+"POT-Creation-Date: 2026-10-19 23:42+0000\n"
 "PO-Revision-Date: 2026-10-18 15:25+0000\n"
 "Last-Translator: Stephan Paternotte <stephan@paternottes.net>, 2026\n"
 "Language-Team: Dutch (https://app.transifex.com/openmediavault-plugin-developers/teams/1854/nl/)\n"
@@ -21,11 +21,18 @@ msgstr ""
 "Language: nl\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid ""
+"A http:// or https:// URL. Addresses in the local network are not allowed."
+msgstr ""
+
 msgid "Access"
 msgstr "Toegang"
 
 msgid "Action"
 msgstr "Actie"
+
+msgid "Algorithm"
+msgstr ""
 
 msgid "Allow access"
 msgstr "Toegang verlenen"
@@ -58,6 +65,9 @@ msgstr "Bladeren"
 msgid "Browse as tree"
 msgstr "Bladeren als boomstructuur"
 
+msgid "Calculate"
+msgstr ""
+
 msgid "Change owner"
 msgstr "Eigenaar aanpassen"
 
@@ -75,6 +85,9 @@ msgstr "Eigenaar aanpassen…"
 
 msgid "Changing permissions ..."
 msgstr "Machtigingen aanpassen…"
+
+msgid "Checksum"
+msgstr ""
 
 msgid "Comment"
 msgstr "Commentaar"
@@ -142,8 +155,17 @@ msgstr ""
 "Wilt u de geselecteerde items echt permanent verwijderen? Dit kan niet "
 "ongedaan worden gemaakt."
 
+msgid "Docs"
+msgstr ""
+
 msgid "Download"
 msgstr "Downloaden"
+
+msgid "Download from URL"
+msgstr ""
+
+msgid "Downloading ..."
+msgstr ""
 
 msgid "Edit"
 msgstr "Bewerken"
@@ -159,6 +181,9 @@ msgstr "Prullenbak legen…"
 
 msgid "Enabled"
 msgstr "Ingeschakeld"
+
+msgid "Enter a http:// or https:// URL."
+msgstr ""
 
 msgid "Enter an octal mode, e.g. 0775."
 msgstr "Voer een octale waarde in, bijv. 0775."
@@ -178,6 +203,9 @@ msgstr "Bestandsbeheerder"
 msgid "File created."
 msgstr "Bestand aangemaakt."
 
+msgid "File name"
+msgstr ""
+
 msgid "Folder"
 msgstr "Map"
 
@@ -190,15 +218,15 @@ msgstr "Formaat"
 msgid "Group"
 msgstr "Groep"
 
+msgid "Leave empty to use the name provided by the server."
+msgstr ""
+
 msgid ""
 "Let users that log in to the web interface browse the shared folders "
-"according to their shared folder privileges (read-only or read/write). "
-"Changing permissions and owners stays restricted to administrators."
+"according to their shared folder privileges (read-only or read/write). Like "
+"with SMB, the file system permissions and ACLs apply as well. Changing "
+"permissions and owners stays restricted to administrators."
 msgstr ""
-"Laat gebruikers die inloggen op de webinterface door de gedeelde mappen "
-"bladeren op basis van hun gedeelde mappenrechten (alleen-lezen of "
-"lezen/schrijven). Het wijzigen van machtigingen en eigenaren blijft beperkt "
-"tot beheerders."
 
 msgid "Link target"
 msgstr "Doel van de koppeling"
@@ -271,6 +299,12 @@ msgstr "Map openen"
 
 msgid "Open trash"
 msgstr "Prullenbak openen"
+
+msgid "Otherwise a number is appended to the name."
+msgstr ""
+
+msgid "Overwrite an existing file"
+msgstr ""
 
 msgid "Overwrite existing items"
 msgstr "Bestaande items overschrijven"
@@ -372,6 +406,9 @@ msgstr "Prullenbak geleegd."
 msgid "Type"
 msgstr "Type"
 
+msgid "URL"
+msgstr ""
+
 msgid "Upload files"
 msgstr "Bestanden uploaden"
 
@@ -380,3 +417,6 @@ msgstr "Prullenbak gebruiken"
 
 msgid "User"
 msgstr "Gebruiker"
+
+msgid "omv-extras.org wiki"
+msgstr ""

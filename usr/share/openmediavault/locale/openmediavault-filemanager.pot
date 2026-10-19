@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: openmediavault-filemanager\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-18 15:25+0000\n"
+"POT-Creation-Date: 2026-10-19 23:42+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,10 +17,16 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+msgid "A http:// or https:// URL. Addresses in the local network are not allowed."
+msgstr ""
+
 msgid "Access"
 msgstr ""
 
 msgid "Action"
+msgstr ""
+
+msgid "Algorithm"
 msgstr ""
 
 msgid "Allow access"
@@ -50,6 +56,9 @@ msgstr ""
 msgid "Browse as tree"
 msgstr ""
 
+msgid "Calculate"
+msgstr ""
+
 msgid "Change owner"
 msgstr ""
 
@@ -66,6 +75,9 @@ msgid "Changing owner ..."
 msgstr ""
 
 msgid "Changing permissions ..."
+msgstr ""
+
+msgid "Checksum"
 msgstr ""
 
 msgid "Comment"
@@ -122,7 +134,16 @@ msgstr ""
 msgid "Do you really want to permanently delete the selected item(s)? This cannot be undone."
 msgstr ""
 
+msgid "Docs"
+msgstr ""
+
 msgid "Download"
+msgstr ""
+
+msgid "Download from URL"
+msgstr ""
+
+msgid "Downloading ..."
 msgstr ""
 
 msgid "Edit"
@@ -138,6 +159,9 @@ msgid "Emptying trash ..."
 msgstr ""
 
 msgid "Enabled"
+msgstr ""
+
+msgid "Enter a http:// or https:// URL."
 msgstr ""
 
 msgid "Enter an octal mode, e.g. 0775."
@@ -158,6 +182,9 @@ msgstr ""
 msgid "File created."
 msgstr ""
 
+msgid "File name"
+msgstr ""
+
 msgid "Folder"
 msgstr ""
 
@@ -170,7 +197,10 @@ msgstr ""
 msgid "Group"
 msgstr ""
 
-msgid "Let users that log in to the web interface browse the shared folders according to their shared folder privileges (read-only or read/write). Changing permissions and owners stays restricted to administrators."
+msgid "Leave empty to use the name provided by the server."
+msgstr ""
+
+msgid "Let users that log in to the web interface browse the shared folders according to their shared folder privileges (read-only or read/write). Like with SMB, the file system permissions and ACLs apply as well. Changing permissions and owners stays restricted to administrators."
 msgstr ""
 
 msgid "Link target"
@@ -231,6 +261,12 @@ msgid "Open folder"
 msgstr ""
 
 msgid "Open trash"
+msgstr ""
+
+msgid "Otherwise a number is appended to the name."
+msgstr ""
+
+msgid "Overwrite an existing file"
 msgstr ""
 
 msgid "Overwrite existing items"
@@ -323,6 +359,9 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
+msgid "URL"
+msgstr ""
+
 msgid "Upload files"
 msgstr ""
 
@@ -330,4 +369,7 @@ msgid "Use trash"
 msgstr ""
 
 msgid "User"
+msgstr ""
+
+msgid "omv-extras.org wiki"
 msgstr ""

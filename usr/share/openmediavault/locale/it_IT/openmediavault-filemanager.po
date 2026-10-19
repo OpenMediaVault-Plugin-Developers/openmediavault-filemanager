@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: openmediavault-filemanager\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-18 15:25+0000\n"
+"POT-Creation-Date: 2026-10-19 23:42+0000\n"
 "PO-Revision-Date: 2026-10-18 15:25+0000\n"
 "Language-Team: Italian (https://app.transifex.com/openmediavault-plugin-developers/teams/1854/it/)\n"
 "MIME-Version: 1.0\n"
@@ -17,10 +17,17 @@ msgstr ""
 "Language: it\n"
 "Plural-Forms: nplurals=3; plural=n == 1 ? 0 : n != 0 && n % 1000000 == 0 ? 1 : 2;\n"
 
+msgid ""
+"A http:// or https:// URL. Addresses in the local network are not allowed."
+msgstr ""
+
 msgid "Access"
 msgstr ""
 
 msgid "Action"
+msgstr ""
+
+msgid "Algorithm"
 msgstr ""
 
 msgid "Allow access"
@@ -52,6 +59,9 @@ msgstr ""
 msgid "Browse as tree"
 msgstr ""
 
+msgid "Calculate"
+msgstr ""
+
 msgid "Change owner"
 msgstr ""
 
@@ -68,6 +78,9 @@ msgid "Changing owner ..."
 msgstr ""
 
 msgid "Changing permissions ..."
+msgstr ""
+
+msgid "Checksum"
 msgstr ""
 
 msgid "Comment"
@@ -130,7 +143,16 @@ msgid ""
 "be undone."
 msgstr ""
 
+msgid "Docs"
+msgstr ""
+
 msgid "Download"
+msgstr ""
+
+msgid "Download from URL"
+msgstr ""
+
+msgid "Downloading ..."
 msgstr ""
 
 msgid "Edit"
@@ -146,6 +168,9 @@ msgid "Emptying trash ..."
 msgstr ""
 
 msgid "Enabled"
+msgstr ""
+
+msgid "Enter a http:// or https:// URL."
 msgstr ""
 
 msgid "Enter an octal mode, e.g. 0775."
@@ -166,6 +191,9 @@ msgstr ""
 msgid "File created."
 msgstr ""
 
+msgid "File name"
+msgstr ""
+
 msgid "Folder"
 msgstr ""
 
@@ -178,10 +206,14 @@ msgstr ""
 msgid "Group"
 msgstr ""
 
+msgid "Leave empty to use the name provided by the server."
+msgstr ""
+
 msgid ""
 "Let users that log in to the web interface browse the shared folders "
-"according to their shared folder privileges (read-only or read/write). "
-"Changing permissions and owners stays restricted to administrators."
+"according to their shared folder privileges (read-only or read/write). Like "
+"with SMB, the file system permissions and ACLs apply as well. Changing "
+"permissions and owners stays restricted to administrators."
 msgstr ""
 
 msgid "Link target"
@@ -247,6 +279,12 @@ msgid "Open folder"
 msgstr ""
 
 msgid "Open trash"
+msgstr ""
+
+msgid "Otherwise a number is appended to the name."
+msgstr ""
+
+msgid "Overwrite an existing file"
 msgstr ""
 
 msgid "Overwrite existing items"
@@ -343,6 +381,9 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
+msgid "URL"
+msgstr ""
+
 msgid "Upload files"
 msgstr ""
 
@@ -350,4 +391,7 @@ msgid "Use trash"
 msgstr ""
 
 msgid "User"
+msgstr ""
+
+msgid "omv-extras.org wiki"
 msgstr ""
