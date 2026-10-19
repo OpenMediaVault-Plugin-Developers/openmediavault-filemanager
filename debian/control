@@ -13,6 +13,7 @@ Depends: openmediavault (>= 8.5.12),
          acl,
          bzip2,
          file,
+         php-curl,
          php-zip,
          xz-utils,
          zstd,
@@ -20,6 +21,6 @@ Depends: openmediavault (>= 8.5.12),
 Description: OpenMediaVault native file manager plugin
  A native file manager built entirely on the OpenMediaVault declarative
  workbench framework. Browse, search, preview, edit, upload, download,
- copy, move, compress and extract files within shared folders, with a
- trash, permission management and an audit log, without any external
- application.
+ download from URLs, copy, move, compress and extract files within shared
+ folders, with a trash, permission management and an audit log, without
+ any external application.
