@@ -329,6 +329,38 @@
   },
   {
     "type": "rpc",
+    "id": "rpc.filemanager.downloadurl",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "path": {
+          "type": "string",
+          "required": true
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "required": true
+        },
+        "name": {
+          "type": "string"
+        },
+        "overwrite": {
+          "type": [
+            "boolean",
+            "string"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
     "id": "rpc.filemanager.transfer",
     "params": {
       "type": "object",

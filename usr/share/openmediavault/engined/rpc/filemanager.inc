@@ -89,6 +89,7 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         $this->registerMethod("downloadArchive");
         $this->registerMethod("preview");
         $this->registerMethod("uploadChunk");
+        $this->registerMethod("downloadUrl");
         $this->registerMethod("transfer");
         $this->registerMethod("chmod");
         $this->registerMethod("chown");
@@ -1856,6 +1857,359 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
     private function bgOutput($bgOutputFilename, $line)
     {
         $this->writeBgProcOutput($bgOutputFilename, $line . PHP_EOL);
+    }
+
+    /**
+     * Check whether an IP address must not be contacted by downloadUrl(),
+     * e.g. loopback, private, link-local (cloud metadata), CGNAT,
+     * multicast or an address of this host, so the NAS cannot be abused
+     * to reach services in the local network.
+     */
+    private function isBlockedIp($ip, array $localIps)
+    {
+        if (false === filter_var($ip, FILTER_VALIDATE_IP,
+            FILTER_FLAG_GLOBAL_RANGE)) {
+            return true;
+        }
+        $bin = inet_pton($ip);
+        if (4 === strlen($bin)) {
+            // Multicast 224.0.0.0/4.
+            if ((ord($bin[0]) & 0xf0) === 0xe0) {
+                return true;
+            }
+        } else {
+            // Multicast ff00::/8 and NAT64 64:ff9b::/96, 64:ff9b:1::/48,
+            // which may translate to private IPv4 addresses.
+            if ((ord($bin[0]) === 0xff) ||
+                (substr($bin, 0, 12) === hex2bin("0064ff9b0000000000000000")) ||
+                (substr($bin, 0, 6) === hex2bin("0064ff9b0001"))) {
+                return true;
+            }
+        }
+        return in_array($bin, $localIps, true);
+    }
+
+    /**
+     * Resolve the host of a download URL and make sure all its addresses
+     * are public.
+     * @return array The list of IP addresses.
+     */
+    private function resolvePublicHost($host)
+    {
+        $localIps = [];
+        foreach (net_get_interfaces() ?: [] as $iface) {
+            foreach (array_value($iface, "unicast", []) as $addr) {
+                if (!empty($addr['address']) &&
+                    (false !== ($bin = @inet_pton($addr['address'])))) {
+                    $localIps[] = $bin;
+                }
+            }
+        }
+        $host = trim($host, "[]");
+        if (false !== filter_var($host, FILTER_VALIDATE_IP)) {
+            $ips = [$host];
+        } else {
+            // curl itself would interpret numeric forms like `2130706433`
+            // or `0x7f.1` as IPv4 addresses instead of looking them up.
+            // Non-ASCII names would be converted to punycode by curl and
+            // then not match the pinned name.
+            if ((1 === preg_match('/[^A-Za-z0-9.-]/', $host)) ||
+                (1 === preg_match('/^((0x[0-9a-f]*|[0-9]+)\.?)+$/i',
+                $host))) {
+                throw new \OMV\Exception("Invalid host name '%s'.", $host);
+            }
+            $cmd = new \OMV\System\Process("getent", ["ahosts", "--",
+                escapeshellarg($host)]);
+            $cmd->setQuiet(true);
+            $cmd->execute($output, $exitStatus);
+            $ips = [];
+            foreach ($output as $line) {
+                $ip = strtok($line, " \t");
+                if ((false !== $ip) && (false !== filter_var($ip,
+                    FILTER_VALIDATE_IP))) {
+                    $ips[] = $ip;
+                }
+            }
+            $ips = array_values(array_unique($ips));
+            if (empty($ips)) {
+                throw new \OMV\Exception("Failed to resolve the host " .
+                    "name '%s'.", $host);
+            }
+        }
+        foreach ($ips as $ip) {
+            if ($this->isBlockedIp($ip, $localIps)) {
+                throw new \OMV\Exception("Downloads from '%s' are not " .
+                    "allowed, it resolves to the local or private " .
+                    "address %s.", $host, $ip);
+            }
+        }
+        // Use the same notation as CURLINFO_PRIMARY_IP.
+        return array_values(array_unique(array_map(function ($ip) {
+            return inet_ntop(inet_pton($ip));
+        }, $ips)));
+    }
+
+    /**
+     * Validate a download URL and resolve its host.
+     * @return array [host, port, ips]
+     */
+    private function parseDownloadUrl($url)
+    {
+        $parts = parse_url($url);
+        $scheme = strtolower(strval(array_value($parts ?: [], "scheme",
+            "")));
+        if ((false === $parts) || !in_array($scheme, ["http", "https"],
+            true) || empty($parts['host']) ||
+            (1 === preg_match('/[\x00-\x20\x7f]/', $url))) {
+            throw new \OMV\Exception("Invalid URL. Only http:// and " .
+                "https:// URLs are supported.");
+        }
+        $port = intval(array_value($parts, "port", ($scheme === "https") ?
+            443 : 80));
+        return [$parts['host'], $port, $this->resolvePublicHost(
+            $parts['host'])];
+    }
+
+    /**
+     * Strip credentials and the query from a URL for logging.
+     */
+    private function redactUrl($url)
+    {
+        $parts = parse_url($url) ?: [];
+        return sprintf("%s://%s%s%s", array_value($parts, "scheme", ""),
+            array_value($parts, "host", ""), isset($parts['port']) ?
+            ":" . $parts['port'] : "", array_value($parts, "path", ""));
+    }
+
+    /**
+     * Get the file name of a download from the Content-Disposition
+     * header or, if missing, the last component of the URL path.
+     */
+    private function downloadName($disposition, $url)
+    {
+        $name = "";
+        if (1 === preg_match("/filename\*\s*=\s*UTF-8''([^;\s]+)/i",
+            $disposition, $matches)) {
+            $name = rawurldecode($matches[1]);
+        } elseif (1 === preg_match('/filename\s*=\s*("([^"]*)"|[^;\s]+)/i',
+            $disposition, $matches)) {
+            $name = isset($matches[2]) ? $matches[2] : $matches[1];
+        }
+        if ($name === "") {
+            $name = rawurldecode(basename(strval(parse_url($url,
+                PHP_URL_PATH))));
+        }
+        $name = basename(str_replace("\\", "/", $name));
+        try {
+            return $this->validateName($name);
+        } catch (\Exception $e) {
+            return "download";
+        }
+    }
+
+    /**
+     * Download a file from a http:// or https:// URL into a folder.
+     * Every request, including redirects, is pinned to addresses that
+     * were checked to be public, so internal services cannot be reached.
+     * Downloads that do not fit into the free space are aborted.
+     */
+    public function downloadUrl($params, $context)
+    {
+        $this->validateMethodContext($context, [
+            "role" => OMV_ROLE_EVERYONE
+        ]);
+        $this->validateMethodParams($params, "rpc.filemanager.downloadurl");
+        list($rootReal, $relPath, $dir) = $this->resolve(
+            $params['uuid'], $params['path'], $context, true);
+        if (!is_dir($dir)) {
+            throw new \OMV\Exception("The target folder does not exist.");
+        }
+        $this->assertAccess($context, $rootReal, $dir, ["-w", "-x"]);
+        $url = trim($params['url']);
+        $this->parseDownloadUrl($url);
+        $overwrite = boolvalEx(array_value($params, "overwrite", false));
+        $name = trim(strval(array_value($params, "name", "")));
+        if ($name !== "") {
+            $name = $this->validateName($name);
+        }
+        return $this->execBgProc(function ($bgStatusFilename,
+            $bgOutputFilename) use ($params, $context, $rootReal, $relPath,
+            $dir, $url, $name, $overwrite) {
+            $this->purgeStaleParts($dir);
+            $part = build_path(DIRECTORY_SEPARATOR, $dir, ".download-" .
+                bin2hex(random_bytes(8)) . self::PART_SUFFIX);
+            // Create the file exclusively, which never follows a symlink
+            // planted at its name.
+            $out = @fopen($part, "xb");
+            if (false === $out) {
+                throw new \OMV\Exception("Failed to create '%s'.",
+                    basename($part));
+            }
+            try {
+                $free = disk_free_space($dir);
+                $written = 0;
+                $disposition = "";
+                for ($hop = 0; ; $hop++) {
+                    if ($hop > 10) {
+                        throw new \OMV\Exception("Too many redirects.");
+                    }
+                    list($host, $port, $ips) = $this->parseDownloadUrl($url);
+                    $this->bgOutput($bgOutputFilename, sprintf(
+                        "Connecting to %s ...", $this->redactUrl($url)));
+                    $status = 0;
+                    $disposition = "";
+                    $lastProgress = 0;
+                    $ch = curl_init();
+                    curl_setopt_array($ch, [
+                        CURLOPT_URL => $url,
+                        CURLOPT_PROTOCOLS_STR => "http,https",
+                        CURLOPT_REDIR_PROTOCOLS_STR => "http,https",
+                        // Redirects are followed below, so their targets
+                        // are checked, too.
+                        CURLOPT_FOLLOWLOCATION => false,
+                        CURLOPT_RESOLVE => [sprintf("%s:%d:%s", trim($host,
+                            "[]"), $port, implode(",", array_map(
+                            function ($ip) {
+                                return (false !== strpos($ip, ":")) ?
+                                    "[" . $ip . "]" : $ip;
+                            }, $ips)))],
+                        // A proxy would resolve the host name itself.
+                        CURLOPT_PROXY => "",
+                        CURLOPT_NOPROXY => "*",
+                        CURLOPT_CONNECTTIMEOUT => 30,
+                        CURLOPT_LOW_SPEED_LIMIT => 1,
+                        CURLOPT_LOW_SPEED_TIME => 300,
+                        CURLOPT_USERAGENT => "openmediavault-filemanager",
+                        CURLOPT_ENCODING => "",
+                        CURLOPT_NOPROGRESS => false,
+                        CURLOPT_HEADERFUNCTION => function ($ch, $header)
+                            use ($ips, &$status, &$disposition) {
+                            // Defence in depth: never talk to an address
+                            // that was not checked.
+                            if (!in_array(curl_getinfo($ch,
+                                CURLINFO_PRIMARY_IP), $ips, true)) {
+                                return -1;
+                            }
+                            if (1 === preg_match('#^HTTP/\S+\s+(\d{3})#',
+                                $header, $matches)) {
+                                $status = intval($matches[1]);
+                                $disposition = "";
+                            } elseif (1 === preg_match(
+                                '/^Content-Disposition:\s*(.*)$/i',
+                                trim($header), $matches)) {
+                                $disposition = $matches[1];
+                            }
+                            return strlen($header);
+                        },
+                        CURLOPT_WRITEFUNCTION => function ($ch, $data)
+                            use ($out, $free, &$status, &$written) {
+                            // Discard the body of redirects and errors.
+                            if (($status < 200) || ($status > 299)) {
+                                return strlen($data);
+                            }
+                            $written += strlen($data);
+                            if ((false !== $free) && ($written > $free)) {
+                                return 0;
+                            }
+                            return fwrite($out, $data);
+                        },
+                        CURLOPT_XFERINFOFUNCTION => function ($ch, $dlTotal,
+                            $dlNow) use ($bgOutputFilename, &$status,
+                            &$lastProgress) {
+                            if (($status >= 200) && ($status <= 299) &&
+                                (time() - $lastProgress >= 2)) {
+                                $lastProgress = time();
+                                $this->bgOutput($bgOutputFilename, ($dlTotal >
+                                    0) ? sprintf("%s of %s (%d%%)",
+                                    binary_format($dlNow), binary_format(
+                                    $dlTotal), intval($dlNow * 100 /
+                                    $dlTotal)) : binary_format($dlNow));
+                            }
+                            return 0;
+                        }
+                    ]);
+                    if ((false !== $free) && defined(
+                        "CURLOPT_MAXFILESIZE_LARGE")) {
+                        curl_setopt($ch, CURLOPT_MAXFILESIZE_LARGE,
+                            intval($free));
+                    }
+                    $ok = curl_exec($ch);
+                    $errno = curl_errno($ch);
+                    $error = curl_error($ch);
+                    $redirect = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+                    curl_close($ch);
+                    if ((false !== $free) && (($written > $free) ||
+                        ($errno === CURLE_FILESIZE_EXCEEDED))) {
+                        throw new \OMV\Exception("The file is larger " .
+                            "than the free space of %s in the target " .
+                            "folder.", binary_format($free));
+                    }
+                    if (false === $ok) {
+                        throw new \OMV\Exception("The download failed: %s",
+                            $error);
+                    }
+                    if (($status >= 300) && ($status <= 399) &&
+                        !empty($redirect)) {
+                        $url = $redirect;
+                        continue;
+                    }
+                    if (($status < 200) || ($status > 299)) {
+                        throw new \OMV\Exception("The download failed: " .
+                            "the server responded with HTTP status %d.",
+                            $status);
+                    }
+                    break;
+                }
+                if (false === fclose($out)) {
+                    throw new \OMV\Exception("Failed to write the file.");
+                }
+                $out = null;
+                if ($name === "") {
+                    $name = $this->downloadName($disposition, $url);
+                }
+                $target = build_path(DIRECTORY_SEPARATOR, $dir, $name);
+                if (file_exists($target) || is_link($target)) {
+                    if (is_dir($target) && !is_link($target)) {
+                        throw new \OMV\Exception("'%s' is a folder and " .
+                            "cannot be overwritten.", $name);
+                    }
+                    if ($overwrite) {
+                        if (is_file($target) && !is_link($target)) {
+                            $this->assertAccess($context, $rootReal,
+                                $target, ["-w"]);
+                        }
+                    } else {
+                        // Keep the extension, e.g. `file (2).zip`.
+                        $ext = $this->extOf($name);
+                        $base = ($ext === "") ? $name : substr($name, 0,
+                            -(strlen($ext) + 1));
+                        for ($i = 2; file_exists($target) ||
+                            is_link($target); $i++) {
+                            $name = $this->validateName(sprintf("%s (%d)%s",
+                                $base, $i, ($ext === "") ? "" : "." . $ext));
+                            $target = build_path(DIRECTORY_SEPARATOR, $dir,
+                                $name);
+                        }
+                    }
+                }
+                if (!rename($part, $target)) {
+                    throw new \OMV\Exception("Failed to store '%s'.", $name);
+                }
+            } catch (\Exception $e) {
+                if (is_resource($out)) {
+                    fclose($out);
+                }
+                @unlink($part);
+                throw $e;
+            }
+            $this->inheritOwnership($target, $context);
+            $this->audit($context, "download-url", $params['uuid'],
+                $this->joinRel($relPath, $name), sprintf("<- %s (%d bytes)",
+                $this->redactUrl($url), filesize($target)));
+            $this->bgOutput($bgOutputFilename, sprintf("Saved '%s' (%s).",
+                $name, binary_format(filesize($target))));
+            return "";
+        });
     }
 
     /**

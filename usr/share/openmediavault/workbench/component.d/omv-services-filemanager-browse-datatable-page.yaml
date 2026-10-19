@@ -150,6 +150,56 @@ data:
             execute:
               type: url
               url: "/externalRedirect/{{ ('filemanager-upload.php?uuid=' ~ (_routeParams.uuid or _selected[0].uuid) ~ '&path=' ~ (_routeParams.path or _selected[0].dirpath)) | encodeuricomponent }}"
+          - text: _("Download from URL")
+            icon: mdi:cloud-download-outline
+            execute:
+              type: formDialog
+              formDialog:
+                title: _("Download from URL")
+                fields:
+                  - type: hidden
+                    name: uuid
+                    value: "{{ _routeParams.uuid or _selected[0].uuid }}"
+                  - type: hidden
+                    name: path
+                    value: "{{ _routeParams.path or _selected[0].dirpath }}"
+                  - type: textInput
+                    name: url
+                    label: _("URL")
+                    hint: _("A http:// or https:// URL. Addresses in the local network are not allowed.")
+                    validators:
+                      required: true
+                      pattern:
+                        pattern: "^[hH][tT][tT][pP][sS]?://.+"
+                        errorData: _("Enter a http:// or https:// URL.")
+                  - type: textInput
+                    name: name
+                    label: _("File name")
+                    hint: _("Leave empty to use the name provided by the server.")
+                    value: ""
+                  - type: checkbox
+                    name: overwrite
+                    label: _("Overwrite an existing file")
+                    hint: _("Otherwise a number is appended to the name.")
+                    value: false
+                buttons:
+                  submit:
+                    text: _("Download")
+                    execute:
+                      type: taskDialog
+                      taskDialog:
+                        config:
+                          title: _("Downloading ...")
+                          startOnInit: true
+                          request:
+                            service: FileManager
+                            method: downloadUrl
+                            params:
+                              uuid: "{{ uuid }}"
+                              path: "{{ path }}"
+                              url: "{{ url }}"
+                              name: "{{ name }}"
+                              overwrite: "{{ overwrite }}"
           - text: _("New folder")
             icon: mdi:folder-plus-outline
             execute:
