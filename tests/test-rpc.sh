@@ -8,7 +8,8 @@
 # confinement, create/rename, editor (incl. conflict detection), trash,
 # search, copy/move, archives, symlinks pointing out of the shared folder,
 # permissions, properties, checksums, download/preview (incl. security
-# headers), chunked upload, the audit log and the access checks (read-only
+# headers), chunked upload, download from URL (incl. blocking of local
+# addresses), the audit log and the access checks (read-only
 # mode, exposed shared folders, disabled, file system permissions of
 # non-administrative users).
 #
@@ -890,6 +891,41 @@ check "uploadChunk — abandoned partial file removed" \
 check "uploadChunk — recent partial file kept" \
     test -e "$TEST_DIR/.fresh.bin.fmpart"
 rm -f "$TEST_DIR/.fresh.bin.fmpart"
+
+# ===========================================================================
+section "Download from URL"
+# ===========================================================================
+
+durl() {  # $1 URL, [$2 name]
+    echo "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"url\":\"$1\",\"name\":\"${2:-}\",\"overwrite\":false}"
+}
+assert_rpc_fails "downloadUrl — ftp:// refused" "FileManager" "downloadUrl" \
+    "$(durl "ftp://example.com/x")" "only http"
+assert_rpc_fails "downloadUrl — file:// refused" "FileManager" "downloadUrl" \
+    "$(durl "file:///etc/passwd")" "only http"
+for u in "http://127.0.0.1/" "http://localhost/" "http://[::1]/" \
+    "http://169.254.169.254/" "http://192.168.1.1/" "http://[::ffff:10.0.0.1]/" \
+    "http://$(hostname)/"; do
+    assert_rpc_fails "downloadUrl — $u refused" "FileManager" "downloadUrl" \
+        "$(durl "$u")" "not allowed"
+done
+assert_rpc_fails "downloadUrl — numeric host refused" "FileManager" "downloadUrl" \
+    "$(durl "http://2130706433/")" "invalid host"
+assert_rpc_fails "downloadUrl — invalid file name" "FileManager" "downloadUrl" \
+    "$(durl "https://example.com/" "../x")" "invalid name"
+if curl -sf -o /dev/null --max-time 10 https://example.com/; then
+    assert_bg "downloadUrl — download" "downloadUrl" \
+        "$(durl "https://example.com/" "example.html")" ok "Saved 'example.html'" >/dev/null
+    check "downloadUrl — file stored" grep -qi "example domain" "$TEST_DIR/example.html"
+    check "downloadUrl — owned like the parent" \
+        test "$(stat -c '%U:%G' "$TEST_DIR/example.html")" = "nobody:users"
+    assert_bg "downloadUrl — existing name gets a number" "downloadUrl" \
+        "$(durl "https://example.com/" "example.html")" ok "Saved 'example (2).html'" >/dev/null
+    check "downloadUrl — no partial file left" \
+        bash -c "! ls -A '$TEST_DIR' | grep -q '^\.download-.*\.fmpart$'"
+else
+    info "No internet access, skipping the download tests."
+fi
 
 # ===========================================================================
 section "Trash"
