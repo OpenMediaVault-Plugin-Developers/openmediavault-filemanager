@@ -67,3 +67,9 @@ data:
         label: _("Allow access")
         hint: _("Let users that log in to the web interface browse the shared folders according to their shared folder privileges (read-only or read/write). Changing permissions and owners stays restricted to administrators.")
         value: false
+    buttons:
+      - template: submit
+      - template: cancel
+        execute:
+          type: url
+          url: "/services/filemanager"
