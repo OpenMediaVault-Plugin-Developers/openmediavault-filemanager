@@ -3,12 +3,14 @@ openmediavault-filemanager (8.0) stable; urgency=low
   * Initial release: native file manager built on the declarative
     workbench framework.
   * Browse shared folders as list or tree, with the current location in
-    the breadcrumb, and search recursively by name.
+    the breadcrumb, and search recursively by name. Click a folder name
+    to open it and a file name to open it in a new browser tab.
   * Create folders and files, rename, copy and move (also between shared
     folders), change permissions and owner.
   * Edit text files with a size limit; files are saved atomically.
   * Upload files of any size, download files, folders and selections as
-    ZIP archive, and preview images, PDFs, audio, video and text.
+    ZIP archive, and preview images, PDFs, audio, video and text (other
+    files are downloaded).
   * Compress to ZIP/tar.gz and extract archives.
   * Trash compatible with the Samba recycle bin, with restore.
   * Audit log in Diagnostics | System Logs.

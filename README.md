@@ -17,7 +17,9 @@ third-party *filebrowser* container.
   keeps the owner, mode and ACLs.
 - Upload files of any size, download files, and download folders or several
   items as one ZIP archive.
-- Preview images, PDFs, audio, video and text in a new browser tab.
+- Preview images, PDFs, audio, video and text in a new browser tab; other
+  files are downloaded. Clicking a file name does the same, clicking a folder
+  name opens it.
 - Compress to ZIP or tar.gz and extract archives into a new folder.
 - Properties dialog (type, MIME type, owner, mode, ACLs, recursive size).
 - Recursive search by name, with wildcards.
