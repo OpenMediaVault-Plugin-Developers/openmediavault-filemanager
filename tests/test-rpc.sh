@@ -5,9 +5,12 @@
 #
 # Exercises all FileManager RPC methods against a temporary test folder
 # created inside the given shared folder: settings, listing, path
-# confinement, create/rename, editor, trash, search, copy/move, archives,
-# permissions, properties, download/preview, chunked upload, the audit log
-# and the access checks (read-only mode, exposed shared folders, disabled).
+# confinement, create/rename, editor (incl. conflict detection), trash,
+# search, copy/move, archives, symlinks pointing out of the shared folder,
+# permissions, properties, checksums, download/preview (incl. security
+# headers), chunked upload, the audit log and the access checks (read-only
+# mode, exposed shared folders, disabled, file system permissions of
+# non-administrative users).
 #
 # Prerequisites:
 #   <sharedfolder> — name or UUID of an existing OMV shared folder that is
@@ -273,6 +276,7 @@ ORIG_SETTINGS=""
 BASE_SETTINGS=""
 TRASH_EXISTED=true
 OUTSIDE_DIR=""
+IMMUTABLE=""
 START_TS=$(date '+%Y-%m-%d %H:%M:%S')
 WEBGUI_USER=$(. /etc/default/openmediavault 2>/dev/null; \
     echo "${OMV_WEBGUI_FILE_OWNERGROUP_NAME:-openmediavault-webgui}")
@@ -293,6 +297,7 @@ cleanup() {
             &>/dev/null || true
     fi
 
+    [ -n "$IMMUTABLE" ] && chattr -i -- "$IMMUTABLE" 2>/dev/null
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         info "Removing test folder $TEST_DIR"
         rm -rf --one-file-system -- "$TEST_DIR"
@@ -324,7 +329,7 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 section "Pre-flight"
 
-for cmd in omv-rpc jq python3 base64 journalctl; do
+for cmd in omv-rpc jq python3 base64 journalctl sha256sum md5sum; do
     if command -v "$cmd" &>/dev/null; then
         _pass "command available: $cmd"
     else
@@ -485,6 +490,8 @@ assert_rpc_fails "mkDir — name with slash rejected" "FileManager" "mkDir" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"name\":\"x/y\"}" "invalid name"
 assert_rpc_fails "mkDir — '..' rejected" "FileManager" "mkDir" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"name\":\"..\"}" "invalid name"
+assert_rpc_fails "mkFile — name with newline rejected" "FileManager" "mkFile" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"name\":\"x\\ny\"}" "invalid name"
 
 # Fixture files created directly.
 printf 'hello\n' > "$TEST_DIR/sub/foo.log"
@@ -592,7 +599,21 @@ check "setFileContent — hard link kept" \
     test "$(cat "$TEST_DIR/hard.txt")" = "linked"
 rm -f "$TEST_DIR/hard.txt"
 assert_rpc "getFileContent" "FileManager" "getFileContent" \
-    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/a.txt")\"}" '"content":"linked"' >/dev/null
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/a.txt")\"}" '"content":"linked"' && {
+    ETAG=$(echo "$OUT" | jq -r '.etag')
+    check "getFileContent — etag is the SHA-1 of the content" \
+        test "$ETAG" = "$(sha1sum < "$TEST_DIR/a.txt" | cut -d' ' -f1)"
+    printf 'external' > "$TEST_DIR/a.txt"
+    assert_rpc_fails "setFileContent — refused if changed since opened" "FileManager" \
+        "setFileContent" "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/a.txt")\",\"content\":\"mine\",\"etag\":\"$ETAG\"}" \
+        "changed by someone else"
+    check "setFileContent — concurrent change kept" \
+        test "$(cat "$TEST_DIR/a.txt")" = "external"
+    assert_rpc "setFileContent — current etag" "FileManager" "setFileContent" \
+        "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/a.txt")\",\"content\":\"mine\",\"etag\":\"$(printf 'external' | sha1sum | cut -d' ' -f1)\"}" >/dev/null
+    check "setFileContent — saved with current etag" \
+        test "$(cat "$TEST_DIR/a.txt")" = "mine"
+}
 assert_rpc_fails "getFileContent — binary file" "FileManager" "getFileContent" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/bin.dat")\"}" "binary"
 assert_rpc_fails "getFileContent — non-UTF-8 file" "FileManager" "getFileContent" \
@@ -615,6 +636,14 @@ assert_rpc "search — 'foo'" "FileManager" "search" \
 assert_rpc "search — wildcard '*.log'" "FileManager" "search" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"query\":\"*.log\",\"start\":0,\"limit\":null}" && \
     check "search — wildcard result" test "$(echo "$OUT" | names)" = "foo.log"
+# Names created otherwise (e.g. via SMB) may contain newlines and blanks.
+ODD="odd "$'\n'"name.txt"
+printf 'x' > "$TEST_DIR/sub/$ODD"
+assert_rpc "search — name with newline and blank" "FileManager" "search" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"query\":\"odd\",\"start\":0,\"limit\":null}" && \
+    jcheck "search — name with newline and blank found intact" "$OUT" \
+        'any(.data[]; .name == $n)' --arg n "$ODD"
+rm -f -- "$TEST_DIR/sub/$ODD"
 
 # ===========================================================================
 section "Copy & move"
@@ -682,6 +711,42 @@ assert_rpc_fails "extract — not an archive" "FileManager" "extract" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/a.txt")\"}" "not a supported archive"
 
 # ===========================================================================
+section "Symlinks out of the shared folder"
+# ===========================================================================
+
+# Such links can be created by users, e.g. by extracting a tar archive.
+printf 'secret' > "$OUTSIDE_DIR/secret"
+printf 'original' > "$OUTSIDE_DIR/victim"
+ln -s "$OUTSIDE_DIR/secret" "$TEST_DIR/leak"
+ln -s "$OUTSIDE_DIR/victim" "$TEST_DIR/trap.tar.gz.fmpart"
+ln -s "$OUTSIDE_DIR/created" "$TEST_DIR/dangling"
+assert_rpc_fails "compress — symlink not added to a ZIP" "FileManager" "compress" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/leak")\",\"name\":\"leak\",\"format\":\"zip\"}" \
+    "symbolic link"
+check "compress — no ZIP with the link target created" test ! -e "$TEST_DIR/leak.zip"
+assert_bg "compress — tar.gz stores a symlink as link" "compress" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/leak")\",\"name\":\"leak\",\"format\":\"tar.gz\"}" \
+    ok >/dev/null
+check "compress — tar.gz contains the link, not the target" \
+    bash -c "tar -tvzf '$TEST_DIR/leak.tar.gz' | grep -q '^l'"
+assert_rpc_fails "compress — planted partial archive refused" "FileManager" "compress" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/a.txt")\",\"name\":\"trap\",\"format\":\"tar.gz\"}" \
+    "already exists"
+check "compress — link target of the partial archive untouched" \
+    test "$(cat "$OUTSIDE_DIR/victim")" = "original"
+PROPS=$(mktemp)
+STAGED+=("$PROPS")
+assert_bg "getProperties — symlink out of the shared folder" "getProperties" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/leak")\"}" ok "Link target:" > "$PROPS"
+check "getProperties — link target not inspected" \
+    bash -c "! grep -q '^MIME type:' '$PROPS'"
+assert_rpc "delete — dangling symlink to trash" "FileManager" "delete" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/dangling")\"}" >/dev/null
+check "delete — link target not created by the trash" \
+    test ! -e "$OUTSIDE_DIR/created"
+rm -f "$TEST_DIR/trap.tar.gz.fmpart"
+
+# ===========================================================================
 section "Permissions & properties"
 # ===========================================================================
 
@@ -694,6 +759,19 @@ check "chmod — files 660 (no execute bit added)" \
     test "$(stat -c %a "$TEST_DIR/arch/sub/foo.log")" = "660"
 assert_rpc_fails "chmod — invalid mode" "FileManager" "chmod" \
     "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/a.txt")\",\"mode\":\"999\",\"recursive\":false}"
+mkdir "$TEST_DIR/immut"
+printf 'x' > "$TEST_DIR/immut/f"
+if chattr +i "$TEST_DIR/immut/f" 2>/dev/null; then
+    IMMUTABLE="$TEST_DIR/immut/f"
+    assert_bg "chmod — recursive failure reported" "chmod" \
+        "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/immut")\",\"mode\":\"0770\",\"recursive\":true}" \
+        fail "Failed to change the mode" >/dev/null
+    chattr -i "$IMMUTABLE"
+    IMMUTABLE=""
+else
+    info "chattr +i not supported on this file system — chmod failure check skipped"
+fi
+rm -rf "$TEST_DIR/immut"
 assert_bg "chown — root:users" "chown" \
     "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/a.txt")\",\"owner\":\"root\",\"group\":\"users\",\"recursive\":false}" \
     ok >/dev/null
@@ -705,6 +783,23 @@ assert_bg "getProperties — folder" "getProperties" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/sub")\"}" ok "Contents:" >/dev/null
 assert_bg "getProperties — symlink" "getProperties" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/broken")\"}" ok "(broken)" >/dev/null
+
+# ===========================================================================
+section "Checksums"
+# ===========================================================================
+
+assert_bg "checksum — SHA-256 of two files" "checksum" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/pic.png"),$(tok "$T/a.txt")\",\"algorithm\":\"sha256\"}" \
+    ok "$(sha256sum < "$TEST_DIR/pic.png" | cut -d' ' -f1)  $T/pic.png" >/dev/null
+assert_bg "checksum — MD5" "checksum" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/a.txt")\",\"algorithm\":\"md5\"}" \
+    ok "$(md5sum < "$TEST_DIR/a.txt" | cut -d' ' -f1)  $T/a.txt" >/dev/null
+assert_rpc_fails "checksum — folder refused" "FileManager" "checksum" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/sub")\",\"algorithm\":\"sha256\"}" "not a file"
+assert_rpc_fails "checksum — unknown algorithm rejected" "FileManager" "checksum" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/a.txt")\",\"algorithm\":\"crc32\"}"
+assert_rpc_fails "checksum — symlink escaping the shared folder" "FileManager" "checksum" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/leak")\",\"algorithm\":\"sha256\"}" "escapes"
 
 # ===========================================================================
 section "Download & preview"
@@ -736,7 +831,20 @@ assert_rpc_fails "downloadArchive — escaping symlink" "FileManager" "downloadA
 assert_rpc "preview — image inline" "FileManager" "preview" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/pic.png")\"}" '"Content-Type":"image/png"' && stage "$OUT"
 assert_rpc "preview — HTML sent as text/plain" "FileManager" "preview" \
-    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/page.html")\"}" 'text/plain' && stage "$OUT"
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/page.html")\"}" 'text/plain' && {
+    stage "$OUT"
+    jcheck "preview — content sniffing disabled" "$OUT" \
+        '.headers["X-Content-Type-Options"] == "nosniff"'
+    jcheck "preview — document sandboxed" "$OUT" \
+        '.headers["Content-Security-Policy"] == "sandbox"'
+}
+printf '%%PDF-1.4\n%%%%EOF\n' > "$TEST_DIR/doc.pdf"
+assert_rpc "preview — PDF inline" "FileManager" "preview" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/doc.pdf")\"}" '"Content-Type":"application/pdf"' && {
+    stage "$OUT"
+    jcheck "preview — PDF not sandboxed (breaks the browser viewer)" "$OUT" \
+        '(.headers | has("Content-Security-Policy") | not) and .headers["X-Content-Type-Options"] == "nosniff"'
+}
 assert_rpc "preview — binary file sent as attachment" "FileManager" "preview" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/bin.dat")\"}" '"Content-Disposition":"attachment' && stage "$OUT"
 
@@ -768,6 +876,20 @@ assert_rpc_fails "uploadChunk — existing file kept" "FileManager" "uploadChunk
 assert_rpc "uploadChunk — overwrite" "FileManager" "uploadChunk" \
     "$(up 0 true true "$C1")" >/dev/null
 check "uploadChunk — overwritten" test "$(cat "$TEST_DIR/up.txt")" = "hello "
+printf 'original' > "$OUTSIDE_DIR/victim2"
+ln -s "$OUTSIDE_DIR/victim2" "$TEST_DIR/.up2.txt.fmpart"
+printf 'x' > "$TEST_DIR/.stale.bin.fmpart"
+touch -d '2 days ago' "$TEST_DIR/.stale.bin.fmpart"
+printf 'x' > "$TEST_DIR/.fresh.bin.fmpart"
+assert_rpc "uploadChunk — planted partial file" "FileManager" "uploadChunk" \
+    "$(up 0 true false "$C1" up2.txt)" >/dev/null
+check "uploadChunk — symlink at the partial file name not followed" \
+    bash -c "[ \"\$(cat '$OUTSIDE_DIR/victim2')\" = original ] && [ \"\$(cat '$TEST_DIR/up2.txt')\" = 'hello ' ]"
+check "uploadChunk — abandoned partial file removed" \
+    test ! -e "$TEST_DIR/.stale.bin.fmpart"
+check "uploadChunk — recent partial file kept" \
+    test -e "$TEST_DIR/.fresh.bin.fmpart"
+rm -f "$TEST_DIR/.fresh.bin.fmpart"
 
 # ===========================================================================
 section "Trash"
@@ -796,6 +918,12 @@ assert_rpc "delete — symlink" "FileManager" "delete" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/sublink2")\"}" >/dev/null
 check "delete — only the link was trashed" \
     bash -c "[ -L '$TR/sublink2' ] && [ -d '$TEST_DIR/sub' ]"
+printf 'x' > "$TEST_DIR/nl"$'\n'"name"
+assert_rpc "delete — name with newline" "FileManager" "delete" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/nl"$'\n'"name")\"}" >/dev/null
+sleep 1
+check "audit log — control characters replaced, one line per entry" \
+    bash -c "journalctl --quiet --no-pager SYSLOG_IDENTIFIER=omv-filemanager --since '$START_TS' --output=cat | grep -qF '] trash: $SF_NAME:/$T/nl?name'"
 assert_rpc "delete — permanently" "FileManager" "delete" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/up.txt")\",\"permanent\":true}" >/dev/null
 check "delete — permanent delete bypasses the trash" \
@@ -867,6 +995,25 @@ section "Non-administrative user"
 if [ -z "$TEST_USER" ]; then
     info "No username given — skipped"
 else
+    # The file system permissions apply to users, too. Let the user write
+    # to the test folder regardless of its groups, and add items it may
+    # not access.
+    chmod o+w "$TEST_DIR"
+    mkdir "$TEST_DIR/private"
+    printf 'secret' > "$TEST_DIR/private/p.txt"
+    chmod 700 "$TEST_DIR/private"
+    printf 'secret' > "$TEST_DIR/private.txt"
+    chmod 600 "$TEST_DIR/private.txt"
+    printf 'public' > "$TEST_DIR/public.txt"
+    chmod 644 "$TEST_DIR/public.txt"
+    mkdir "$TEST_DIR/sticky"
+    chmod 1777 "$TEST_DIR/sticky"
+    printf 'x' > "$TEST_DIR/sticky/s.txt"
+    chmod 666 "$TEST_DIR/sticky/s.txt"
+    chown root:root "$TEST_DIR/private" "$TEST_DIR/private/p.txt" \
+        "$TEST_DIR/private.txt" "$TEST_DIR/public.txt" "$TEST_DIR/sticky" \
+        "$TEST_DIR/sticky/s.txt"
+
     RPC_USER="$TEST_USER"
     assert_rpc_fails "user — refused while 'allowusers' is off" "FileManager" \
         "getSharedFolderList" "$GETLIST" "not available"
@@ -879,7 +1026,45 @@ else
     assert_rpc_fails "user — settings are admin only" "FileManager" "getSettings"
     assert_rpc_fails "user — chmod is admin only" "FileManager" "chmod" \
         "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/a.txt")\",\"mode\":\"0777\",\"recursive\":false}"
+    assert_rpc_fails "user — folder without permission not listed" "FileManager" \
+        "getList" "$(list_params "$T/private")" "permission denied"
+    assert_rpc_fails "user — file without permission not opened" "FileManager" \
+        "getFileContent" "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/private.txt")\"}" \
+        "permission denied"
+    assert_rpc_fails "user — file without permission not downloaded" "FileManager" \
+        "download" "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/private.txt")\"}" \
+        "permission denied"
+    assert_rpc_fails "user — file without permission not previewed" "FileManager" \
+        "preview" "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/private.txt")\"}" \
+        "permission denied"
+    assert_rpc_fails "user — folder with unreadable contents not zipped" "FileManager" \
+        "downloadArchive" "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/private")\"}" \
+        "permission denied"
+    assert_rpc_fails "user — checksum of unreadable file" "FileManager" "checksum" \
+        "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/private.txt")\",\"algorithm\":\"sha256\"}" \
+        "permission denied"
+    assert_rpc "user — readable file opened" "FileManager" "getFileContent" \
+        "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/public.txt")\"}" '"content":"public"' >/dev/null
+    assert_rpc "user — search" "FileManager" "search" \
+        "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"query\":\"p.txt\",\"start\":0,\"limit\":null}" && \
+        jcheck "user — search skips folders without permission" "$OUT" \
+            '(any(.data[]; .location == $l)) | not' --arg l "/$T/private"
     if [ "$USER_PERMS" = "7" ]; then
+        assert_rpc_fails "user — mkDir in folder without permission" "FileManager" "mkDir" \
+            "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/private")\",\"name\":\"x\"}" \
+            "permission denied"
+        assert_rpc_fails "user — saving a read-only file" "FileManager" "setFileContent" \
+            "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/public.txt")\",\"content\":\"x\"}" \
+            "permission denied"
+        assert_rpc_fails "user — deleting other's file in sticky folder" "FileManager" \
+            "delete" "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/sticky/s.txt")\"}" \
+            "permission denied"
+        assert_rpc_fails "user — permanently deleting folder with protected contents" \
+            "FileManager" "delete" \
+            "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/private")\",\"permanent\":true}" \
+            "permission denied"
+        check "user — protected items kept" \
+            bash -c "[ -f '$TEST_DIR/private/p.txt' ] && [ -f '$TEST_DIR/sticky/s.txt' ] && [ \"\$(cat '$TEST_DIR/public.txt')\" = public ]"
         assert_rpc "user — mkFile" "FileManager" "mkFile" \
             "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"name\":\"user.txt\"}" >/dev/null
         check "user — new file owned by $TEST_USER" \
