@@ -497,6 +497,98 @@
   },
   {
     "type": "rpc",
+    "id": "rpc.filemanager.purgetrash",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4"
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.mklink",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "path": {
+          "type": "string",
+          "required": true
+        },
+        "destpath": {
+          "type": "string",
+          "required": true
+        },
+        "name": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.createsharelink",
+    "params": {
+      "type": "object",
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "format": "uuidv4",
+          "required": true
+        },
+        "path": {
+          "type": "string",
+          "required": true
+        },
+        "expires": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650,
+          "required": true
+        },
+        "password": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "maxdownloads": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000,
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
+    "id": "rpc.filemanager.sharelink",
+    "params": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{22}$",
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "type": "rpc",
     "id": "rpc.filemanager.setsettings",
     "params": {
       "type": "object",
@@ -537,6 +629,45 @@
         },
         "allowusers": {
           "type": "boolean",
+          "required": true
+        },
+        "trashretention": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650,
+          "required": true
+        },
+        "sharelinks": {
+          "type": "boolean",
+          "required": true
+        },
+        "shareusers": {
+          "type": "boolean",
+          "required": true
+        },
+        "shareport": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "required": true
+        },
+        "sharesslcertificateref": {
+          "type": "string",
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uuidv4"
+            },
+            {
+              "type": "string",
+              "maxLength": 0
+            }
+          ],
+          "required": true
+        },
+        "shareurl": {
+          "type": "string",
+          "pattern": "^\\s*(https?:\\/\\/[^\\s\\/?#]+(\\/[^\\s?#]*)?)?\\s*$",
           "required": true
         }
       }

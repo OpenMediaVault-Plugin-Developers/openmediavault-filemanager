@@ -55,6 +55,15 @@ data:
         label: _("Use trash")
         hint: _("Move deleted items to the '.recycle' folder of the shared folder instead of deleting them permanently. This is the same folder the Samba recycle bin uses.")
         value: true
+      - type: numberInput
+        name: trashretention
+        label: _("Empty trash after")
+        hint: _("Permanently delete items that are in the trash for longer than this number of days, once a day. This includes items deleted via the Samba recycle bin. Set to 0 to keep them until the trash is emptied.")
+        value: 0
+        validators:
+          required: true
+          min: 0
+          max: 3650
       - type: checkbox
         name: auditlog
         label: _("Audit log")
@@ -67,6 +76,67 @@ data:
         label: _("Allow access")
         hint: _("Let users that log in to the web interface browse the shared folders according to their shared folder privileges (read-only or read/write). Like with SMB, the file system permissions and ACLs apply as well. Changing permissions and owners stays restricted to administrators.")
         value: false
+      - type: divider
+        title: _("Share links")
+      - type: checkbox
+        name: sharelinks
+        label: _("Enabled")
+        hint: _("Allow creating links to files and folders that can be downloaded without logging in, optionally protected by a password, an expiry date and a maximum number of downloads. The links are served by a separate, isolated server on its own port, not by the web interface.")
+        value: false
+      - type: checkbox
+        name: shareusers
+        label: _("Allow non-administrative users")
+        hint: _("Let non-administrative users with access to the file manager create share links. Their file system permissions still apply when a link is used.")
+        value: false
+        modifiers:
+          - type: enabled
+            constraint:
+              operator: truthy
+              arg0:
+                prop: sharelinks
+      - type: numberInput
+        name: shareport
+        label: _("Port")
+        hint: _("The port of the share link server. Open or forward it in your firewall or router to make the links reachable from outside.")
+        value: 8095
+        validators:
+          required: true
+          min: 1024
+          max: 65535
+          patternType: port
+        modifiers:
+          - type: enabled
+            constraint:
+              operator: truthy
+              arg0:
+                prop: sharelinks
+      - type: sslCertSelect
+        name: sharesslcertificateref
+        label: _("Certificate")
+        hint: _("Serve the links via HTTPS with this certificate. Strongly recommended, otherwise passwords and files are transferred unencrypted.")
+        hasEmptyOption: true
+        value: ""
+        modifiers:
+          - type: enabled
+            constraint:
+              operator: truthy
+              arg0:
+                prop: sharelinks
+      - type: textInput
+        name: shareurl
+        label: _("Public URL")
+        hint: _("The address used in the links, e.g. https://files.example.com when the server is reachable via a reverse proxy or a port forwarding. Leave empty to use the host name of this system and the port above.")
+        value: ""
+        validators:
+          pattern:
+            pattern: "^\\s*(https?://[^\\s/?#]+(/[^\\s?#]*)?)?\\s*$"
+            errorData: _("Enter a http:// or https:// URL.")
+        modifiers:
+          - type: enabled
+            constraint:
+              operator: truthy
+              arg0:
+                prop: sharelinks
     buttons:
       - template: submit
       - template: cancel

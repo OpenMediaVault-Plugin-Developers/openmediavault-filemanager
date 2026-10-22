@@ -1,0 +1,112 @@
+version: "1.0"
+type: component
+data:
+  name: omv-services-filemanager-sharelinks-datatable-page
+  type: datatablePage
+  config:
+    autoReload: false
+    hasSearchField: true
+    rowId: token
+    rowEnumFmt: "{{ sharename }}:{{ location }}"
+    stateId: 4c7e9a12-8b3d-4f6e-a1c5-2d9f0e7b3a68
+    sorters:
+      - dir: desc
+        prop: created
+    store:
+      proxy:
+        service: FileManager
+        get:
+          method: getShareLinkList
+    columns:
+      - name: _("Name")
+        prop: name
+        flexGrow: 2
+        sortable: true
+      - name: _("Location")
+        prop: location
+        flexGrow: 2
+        sortable: true
+        cellTemplateName: template
+        cellTemplateConfig: "{{ sharename }}:{{ location }}"
+      - name: _("Link")
+        prop: url
+        flexGrow: 3
+        sortable: false
+        cellTemplateName: copyToClipboard
+      - name: _("Status")
+        prop: status
+        flexGrow: 1
+        sortable: true
+        cellTemplateName: chip
+        cellTemplateConfig:
+          map:
+            active:
+              value: _("Active")
+              class: omv-background-color-pair-green
+            expired:
+              value: _("Expired")
+              class: omv-background-color-pair-red
+            exhausted:
+              value: _("Used up")
+              class: omv-background-color-pair-yellow
+      - name: _("Expires")
+        prop: expires
+        flexGrow: 1
+        sortable: true
+        cellTemplateName: template
+        cellTemplateConfig: '{{ ("Never" | translate) if not expires else (expires | localedate("datetime")) }}'
+      - name: _("Downloads")
+        prop: downloads
+        flexGrow: 1
+        sortable: true
+        cellTemplateName: template
+        cellTemplateConfig: '{{ downloads }}{{ (" / " ~ maxdownloads) if maxdownloads }}'
+      - name: _("Password")
+        prop: protected
+        flexGrow: 1
+        sortable: true
+        cellTemplateName: checkIcon
+      - name: _("Created by")
+        prop: creator
+        flexGrow: 1
+        sortable: true
+      - name: _("Created")
+        prop: created
+        flexGrow: 1
+        sortable: true
+        hidden: true
+        cellTemplateName: localeDateTime
+      - name: _("Last download")
+        prop: lastaccess
+        flexGrow: 1
+        sortable: true
+        hidden: true
+        cellTemplateName: template
+        cellTemplateConfig: '{{ (lastaccess | localedate("datetime")) if lastaccess else "-" }}'
+    actions:
+      - type: iconButton
+        icon: mdi:open-in-new
+        tooltip: _("Open link")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+        execute:
+          type: url
+          url: "/externalRedirect/{{ _selected[0].url | encodeuricomponent }}"
+      - type: iconButton
+        icon: mdi:folder-open-outline
+        tooltip: _("Open folder")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+        execute:
+          type: url
+          url: "/services/filemanager/browse/{{ _selected[0].uuid }}/{{ _selected[0].dirpath }}"
+      - template: delete
+        execute:
+          type: request
+          request:
+            service: FileManager
+            method: deleteShareLink
+            params:
+              token: "{{ token }}"

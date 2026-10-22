@@ -98,6 +98,30 @@ data:
                 execute:
                   type: url
                   url: "/services/filemanager/search/{{ uuid }}/root/{{ query | encodeuricomponent }}"
+      - type: iconButton
+        icon: mdi:chart-donut
+        tooltip: _("Disk usage")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+        execute:
+          type: taskDialog
+          taskDialog:
+            config:
+              title: _("Disk usage")
+              startOnInit: true
+              request:
+                service: FileManager
+                method: diskUsage
+                params:
+                  uuid: "{{ _selected[0].uuid }}"
+                  path: "{{ _selected[0].path }}"
+      - type: iconButton
+        icon: mdi:share-variant-outline
+        tooltip: _("Share links")
+        execute:
+          type: url
+          url: "/services/filemanager/sharelinks"
       - type: menu
         icon: mdi:delete-restore
         tooltip: _("Trash")
@@ -105,6 +129,11 @@ data:
           minSelected: 1
           maxSelected: 1
         actions:
+          - text: _("Show all trash items")
+            icon: mdi:format-list-bulleted
+            execute:
+              type: url
+              url: "/services/filemanager/trash"
           - text: _("Open trash")
             icon: mdi:delete-outline
             enabledConstraints:

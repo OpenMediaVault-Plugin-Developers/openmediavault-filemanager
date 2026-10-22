@@ -1,0 +1,8 @@
+version: "1.0"
+type: navigation-item
+data:
+  path: "services.filemanager.sharelinks"
+  text: _("Share links")
+  position: 16
+  icon: "mdi:share-variant-outline"
+  url: "/services/filemanager/sharelinks"

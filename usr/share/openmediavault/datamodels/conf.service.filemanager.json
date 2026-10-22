@@ -40,6 +40,45 @@
     "allowusers": {
       "type": "boolean",
       "default": false
+    },
+    "trashretention": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3650,
+      "default": 0
+    },
+    "sharelinks": {
+      "type": "boolean",
+      "default": false
+    },
+    "shareusers": {
+      "type": "boolean",
+      "default": false
+    },
+    "shareport": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 65535,
+      "default": 8095
+    },
+    "sharesslcertificateref": {
+      "type": "string",
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "uuidv4"
+        },
+        {
+          "type": "string",
+          "maxLength": 0
+        }
+      ],
+      "default": ""
+    },
+    "shareurl": {
+      "type": "string",
+      "pattern": "^(https?:\\/\\/[^\\s\\/?#]+(\\/[^\\s?#]*)?)?$",
+      "default": ""
     }
   }
 }

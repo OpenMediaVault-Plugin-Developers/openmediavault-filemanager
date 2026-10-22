@@ -1,0 +1,6 @@
+version: "1.0"
+type: route
+data:
+  url: "/services/filemanager/trash"
+  title: _("Trash")
+  component: omv-services-filemanager-trash-datatable-page

@@ -8,6 +8,8 @@ set -e
 case "$1" in
     purge)
         omv_config_delete "/config/services/filemanager"
+        rm -rf /var/lib/openmediavault-filemanager \
+            /var/lib/openmediavault-filemanager-share
         dpkg-trigger update-workbench
     ;;
 
@@ -23,5 +25,7 @@ case "$1" in
         exit 1
     ;;
 esac
+
+#DEBHELPER#
 
 exit 0

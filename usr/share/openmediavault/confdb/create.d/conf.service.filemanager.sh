@@ -35,4 +35,12 @@ if ! omv_config_exists "/config/services/filemanager"; then
     omv_config_add_key "/config/services/filemanager" "allowusers" "0"
 fi
 
+# Settings added later.
+for kv in "trashretention=0" "sharelinks=0" "shareusers=0" "shareport=8095" \
+        "sharesslcertificateref=" "shareurl="; do
+    if ! omv_config_exists "/config/services/filemanager/${kv%%=*}"; then
+        omv_config_add_key "/config/services/filemanager" "${kv%%=*}" "${kv#*=}"
+    fi
+done
+
 exit 0

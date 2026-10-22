@@ -50,6 +50,25 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
     const PART_MAX_AGE = 86400;
     // Maximum number of search results.
     const SEARCH_LIMIT = 1000;
+    // Maximum number of lines printed by diskUsage().
+    const USAGE_LIMIT = 200;
+    // Extensions of the archive formats extracted with bsdtar.
+    const BSDTAR_FORMATS = ["7z", "rar", "iso", "cab", "cpio", "xar",
+        "lzh", "lha"];
+
+    // Share links. The links are stored in SHARE_DB. The share link
+    // server (openmediavault-filemanager-share.service, written in
+    // Python and isolated from the WebGUI and engined) only reads
+    // SHARE_EXPORT, which contains the links that are currently valid,
+    // see syncShareLinks(), and writes the download counters to
+    // SHARE_STATE.
+    const SHARE_SERVICE = "openmediavault-filemanager-share.service";
+    const SHARE_DIR = "/var/lib/openmediavault-filemanager";
+    const SHARE_DB = "sharelinks.json";
+    const SHARE_EXPORT = "share-export.json";
+    const SHARE_STATE =
+        "/var/lib/openmediavault-filemanager-share/state.json";
+    const SHARE_PBKDF2_ITERATIONS = 200000;
 
     const PERMS_NONE = 0;
     const PERMS_RO = 5;
@@ -97,6 +116,15 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
         $this->registerMethod("extract");
         $this->registerMethod("getProperties");
         $this->registerMethod("checksum");
+        $this->registerMethod("getTrashList");
+        $this->registerMethod("purgeTrash");
+        $this->registerMethod("duplicate");
+        $this->registerMethod("mkLink");
+        $this->registerMethod("diskUsage");
+        $this->registerMethod("createShareLink");
+        $this->registerMethod("getShareLinkList");
+        $this->registerMethod("deleteShareLink");
+        $this->registerMethod("syncShareLinks");
     }
 
     /* ------------------------------------------------------------------
@@ -120,7 +148,13 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             "sharedfolders" => "",
             "usetrash" => true,
             "auditlog" => true,
-            "allowusers" => false
+            "allowusers" => false,
+            "trashretention" => 0,
+            "sharelinks" => false,
+            "shareusers" => false,
+            "shareport" => 8095,
+            "sharesslcertificateref" => "",
+            "shareurl" => ""
         ];
         try {
             $db = \OMV\Config\Database::getInstance();
@@ -158,13 +192,24 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             "rpc.filemanager.setsettings");
         $params['sharedfolders'] = implode(",", array_filter(
             (array)$params['sharedfolders']));
+        $params['shareurl'] = rtrim(trim($params['shareurl']), "/");
         $db = \OMV\Config\Database::getInstance();
+        // The share link server must not take the port of the WebGUI.
+        $webadmin = $db->getAssoc("conf.webadmin");
+        if (in_array(intval($params['shareport']), [
+            intval(array_value($webadmin, "port", 80)),
+            intval(array_value($webadmin, "sslport", 443))], true)) {
+            throw new \OMV\Exception("The port %d is used by the web " .
+                "interface.", $params['shareport']);
+        }
         $object = $db->get("conf.service.filemanager");
         $object->setAssoc($params);
         $db->set($object);
         $this->settings = null;
         $this->audit($context, "settings", null, null,
             json_encode_safe($params));
+        $this->writeShareExport();
+        $this->applyShareService();
         return $this->getSettings([], $context);
     }
 
@@ -782,9 +827,9 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
 
     private function isArchive($name)
     {
-        return in_array($this->extOf($name), ["zip", "tar", "tar.gz",
-            "tgz", "tar.bz2", "tbz", "tbz2", "tar.xz", "txz", "tar.zst",
-            "tzst"], true);
+        return in_array($this->extOf($name), array_merge(["zip", "tar",
+            "tar.gz", "tgz", "tar.bz2", "tbz", "tbz2", "tar.xz", "txz",
+            "tar.zst", "tzst"], self::BSDTAR_FORMATS), true);
     }
 
     /**
@@ -2577,6 +2622,20 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
                         "archive: %s", $status);
                 }
                 $zip->close();
+            } elseif (in_array($ext, self::BSDTAR_FORMATS, true)) {
+                // Like GNU tar, bsdtar refuses absolute and `..` member
+                // names and does not extract through symlinks (unless
+                // `-P` is given).
+                $cmd = new \OMV\System\Process("bsdtar", ["-x", "-v",
+                    "-f", escapeshellarg($file), "-C",
+                    escapeshellarg($targetDir), "--no-same-owner",
+                    "--no-same-permissions"]);
+                $cmd->setRedirect2to1();
+                if (0 !== $this->exec($cmd->getCommandLine(), $output,
+                    $bgOutputFilename)) {
+                    throw new \OMV\Exception("Failed to extract the " .
+                        "archive.");
+                }
             } else {
                 // GNU tar refuses absolute and `..` member names and
                 // defers creating symlinks, so members cannot be written
@@ -2730,5 +2789,938 @@ class FileManager extends \OMV\Rpc\ServiceAbstract
             }
             return "";
         });
+    }
+
+    /* ------------------------------------------------------------------
+     * Trash overview and cleanup
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Get the trash folders (`.recycle/<user>`) of a shared folder the
+     * caller may see: all of them for administrators, otherwise only the
+     * own one.
+     * @return array username => absolute path
+     */
+    private function trashUserDirs($rootReal, $context)
+    {
+        $base = build_path(DIRECTORY_SEPARATOR, $rootReal, self::TRASH_DIR);
+        if (is_link($base) || !is_dir($base)) {
+            return [];
+        }
+        $result = [];
+        if (!$this->isAdmin($context)) {
+            $dir = build_path(DIRECTORY_SEPARATOR, $base,
+                $context['username']);
+            if (!is_link($dir) && is_dir($dir)) {
+                $result[$context['username']] = $dir;
+            }
+            return $result;
+        }
+        foreach (new \DirectoryIterator($base) as $item) {
+            if (!$item->isDot() && !$item->isLink() && $item->isDir()) {
+                $result[$item->getFilename()] = $item->getPathname();
+            }
+        }
+        ksort($result);
+        return $result;
+    }
+
+    /**
+     * Walk the trash folder of a user. The trash mirrors the folder tree
+     * of the shared folder (Samba `keeptree`), so a folder in the trash
+     * whose original folder still exists is only a container that was
+     * created when an item inside it was deleted; it is descended into.
+     * Everything else is a deleted item and passed to $onItem.
+     * @param callable $onItem Called with the absolute path and the path
+     *   relative to the trash folder of the user.
+     * @param callable|null $onContainer Called with the absolute path of
+     *   a container before descending; return FALSE to skip it.
+     * @param callable|null $onLeave Called with the absolute path of a
+     *   container after it was walked.
+     */
+    private function walkTrash($rootReal, $userDir, $rel, callable $onItem,
+        $onContainer = null, $onLeave = null)
+    {
+        $dir = ($rel === ".") ? $userDir : build_path(DIRECTORY_SEPARATOR,
+            $userDir, $rel);
+        try {
+            $items = new \DirectoryIterator($dir);
+        } catch (\Exception $e) {
+            return;
+        }
+        foreach ($items as $item) {
+            if ($item->isDot()) {
+                continue;
+            }
+            $entryRel = $this->joinRel($rel, $item->getFilename());
+            $abs = $item->getPathname();
+            $orig = build_path(DIRECTORY_SEPARATOR, $rootReal, $entryRel);
+            if (!$item->isLink() && $item->isDir() && !is_link($orig) &&
+                is_dir($orig) && !$this->isInTrash($entryRel)) {
+                if (is_null($onContainer) || $onContainer($abs)) {
+                    $this->walkTrash($rootReal, $userDir, $entryRel,
+                        $onItem, $onContainer, $onLeave);
+                    if (!is_null($onLeave)) {
+                        $onLeave($abs);
+                    }
+                }
+                continue;
+            }
+            $onItem($abs, $entryRel);
+        }
+    }
+
+    /**
+     * List the items in the trash of all shared folders the caller may
+     * browse.
+     */
+    public function getTrashList($params, $context)
+    {
+        $this->validateMethodContext($context, [
+            "role" => OMV_ROLE_EVERYONE
+        ]);
+        $this->validateMethodParams($params, "rpc.common.getlist");
+        $this->assertEnabled($context);
+        $shares = $this->getSharedFolderList([
+            "start" => 0,
+            "limit" => -1,
+            "sortfield" => "name",
+            "sortdir" => "asc"
+        ], $context)['data'];
+        $result = [];
+        foreach ($shares as $share) {
+            try {
+                list($rootReal) = $this->resolveRel($share['uuid'], ".",
+                    $context);
+            } catch (\Exception $e) {
+                continue;
+            }
+            foreach ($this->trashUserDirs($rootReal, $context) as $user =>
+                $userDir) {
+                try {
+                    $this->assertAccess($context, $rootReal, $userDir,
+                        ["-r", "-x"]);
+                } catch (\Exception $e) {
+                    continue;
+                }
+                $this->walkTrash($rootReal, $userDir, ".", function ($abs,
+                    $rel) use (&$result, $share, $rootReal, $user) {
+                    if (count($result) >= self::SEARCH_LIMIT) {
+                        return;
+                    }
+                    $result[] = $this->buildTrashRow($share, $rootReal,
+                        $user, $abs, $rel);
+                });
+            }
+        }
+        return $this->applyFilter($result, $params['start'],
+            $params['limit'], $params['sortfield'], $params['sortdir']);
+    }
+
+    private function buildTrashRow($share, $rootReal, $user, $abs, $rel)
+    {
+        $stat = lstat($abs);
+        $isLink = is_link($abs);
+        $isDir = !$isLink && is_dir($abs);
+        // Strip the collision suffix, see delete().
+        $origRel = preg_replace('/\.~\d+~$/', "", $rel);
+        $origDir = dirname($origRel);
+        $origDirAbs = ($origDir === ".") ? $rootReal :
+            build_path(DIRECTORY_SEPARATOR, $rootReal, $origDir);
+        $origAbs = build_path(DIRECTORY_SEPARATOR, $rootReal, $origRel);
+        $path = $this->encodePath(self::TRASH_DIR . "/" . $user . "/" .
+            $rel);
+        return [
+            "id" => $share['uuid'] . ":" . $path,
+            "uuid" => $share['uuid'],
+            "sharename" => $share['name'],
+            "user" => $user,
+            "name" => basename($origRel),
+            "type" => $isDir ? "dir" : ($isLink ? "link" : "file"),
+            "size" => $isDir ? -1 : $stat['size'],
+            // Moving an item to the trash updates its change time.
+            "deleted" => $stat['ctime'],
+            "location" => "/" . (($origDir === ".") ? "" : $origDir),
+            "path" => $path,
+            "origdir" => (!is_link($origDirAbs) && is_dir($origDirAbs)) ?
+                $this->encodePath($origDir) : "",
+            "conflict" => file_exists($origAbs) || is_link($origAbs)
+        ];
+    }
+
+    /**
+     * Check whether a container in the trash may actually be a deleted
+     * folder whose original folder was created again, e.g. `Photos` was
+     * deleted and a new `Photos` folder was created. Such a folder must
+     * not be purged by the age of its contents, which keep their old
+     * change times when the folder is moved. A real container is changed
+     * whenever an item is moved into it, so its newest entry is about as
+     * old as the container itself.
+     */
+    private function looksLikeDeletedFolder($abs, $cutoff)
+    {
+        $ctime = lstat($abs)['ctime'];
+        if ($ctime < $cutoff) {
+            return false;
+        }
+        foreach (new \DirectoryIterator($abs) as $item) {
+            if (!$item->isDot() && (lstat($item->getPathname())['ctime'] >=
+                ($ctime - 2))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Permanently delete the items that are in the trash for longer than
+     * the configured number of days. Called daily by
+     * openmediavault-filemanager-purgetrash.timer.
+     */
+    public function purgeTrash($params, $context)
+    {
+        $this->validateMethodContext($context, [
+            "role" => OMV_ROLE_ADMINISTRATOR
+        ]);
+        $this->validateMethodParams($params, "rpc.filemanager.purgetrash");
+        $days = array_key_exists("days", $params) ? intval($params['days']) :
+            intval($this->settings()['trashretention']);
+        $explicit = array_key_exists("days", $params);
+        $uuids = [];
+        if (!empty(array_value($params, "uuid", ""))) {
+            $uuids[] = $params['uuid'];
+        } else {
+            $uuids = $this->exposedShares();
+            if (empty($uuids)) {
+                $uuids = array_column(\OMV\Rpc\Rpc::call("ShareMgmt",
+                    "enumerateSharedFolders", [], $this->getAdminContext()),
+                    "uuid");
+            }
+        }
+        return $this->execBgProc(function ($bgStatusFilename,
+            $bgOutputFilename) use ($context, $days, $explicit, $uuids) {
+            if (($days <= 0) && !$explicit) {
+                $this->bgOutput($bgOutputFilename, "The automatic cleanup " .
+                    "of the trash is disabled.");
+                return "";
+            }
+            if (!boolvalEx($this->settings()['enable'])) {
+                $this->bgOutput($bgOutputFilename, "The file manager is " .
+                    "disabled.");
+                return "";
+            }
+            $cutoff = time() - ($days * 86400);
+            $count = 0;
+            $ctimes = [];
+            foreach ($uuids as $uuid) {
+                try {
+                    list($rootReal) = $this->resolveRel($uuid, ".",
+                        $context, true);
+                } catch (\Exception $e) {
+                    continue;
+                }
+                foreach ($this->trashUserDirs($rootReal, $context) as
+                    $userDir) {
+                    $this->walkTrash($rootReal, $userDir, ".", function (
+                        $abs, $rel) use ($bgOutputFilename, $cutoff, $uuid,
+                        &$count) {
+                        if (lstat($abs)['ctime'] >= $cutoff) {
+                            return;
+                        }
+                        try {
+                            $this->removeRecursive($abs);
+                            $count++;
+                            $this->bgOutput($bgOutputFilename, sprintf(
+                                "Deleted %s:/%s", $this->getShare(
+                                $uuid)['name'], $rel));
+                        } catch (\Exception $e) {
+                            $this->bgOutput($bgOutputFilename,
+                                $e->getMessage());
+                        }
+                    }, function ($abs) use ($cutoff, &$ctimes) {
+                        // Deleting items below updates the change time of
+                        // the container, so remember it before.
+                        $ctimes[$abs] = lstat($abs)['ctime'];
+                        return !$this->looksLikeDeletedFolder($abs, $cutoff);
+                    }, function ($abs) use ($cutoff, &$ctimes) {
+                        // Remove containers that became empty, unless an
+                        // item was moved into them recently.
+                        if ($ctimes[$abs] < $cutoff) {
+                            @rmdir($abs);
+                        }
+                        unset($ctimes[$abs]);
+                    });
+                }
+            }
+            $this->audit($context, "purgetrash", null, null, sprintf(
+                "%d item(s) older than %d day(s)", $count, $days));
+            $this->bgOutput($bgOutputFilename, sprintf("Deleted %d item(s) " .
+                "older than %d day(s).", $count, $days));
+            return "";
+        });
+    }
+
+    /* ------------------------------------------------------------------
+     * Duplicate / links / disk usage
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Get a free name for a copy of an item, e.g. `report (copy).pdf`,
+     * `report (copy 2).pdf`.
+     */
+    private function copyPath($path)
+    {
+        $name = basename($path);
+        $ext = (is_dir($path) && !is_link($path)) ? "" : $this->extOf($name);
+        $base = ($ext === "") ? $name : substr($name, 0, -(strlen($ext) + 1));
+        // Names like `.bashrc` have no base name.
+        if ($base === "") {
+            list($base, $ext) = [$name, ""];
+        }
+        for ($i = 1; $i < 10000; $i++) {
+            $candidate = build_path(DIRECTORY_SEPARATOR, dirname($path),
+                $this->validateName(sprintf("%s (copy%s)%s", $base,
+                ($i === 1) ? "" : " " . $i, ($ext === "") ? "" : "." . $ext)));
+            if (!file_exists($candidate) && !is_link($candidate)) {
+                return $candidate;
+            }
+        }
+        throw new \OMV\Exception("Failed to find a free name for '%s'.",
+            $name);
+    }
+
+    /**
+     * Copy items next to themselves.
+     */
+    public function duplicate($params, $context)
+    {
+        $this->validateMethodContext($context, [
+            "role" => OMV_ROLE_EVERYONE
+        ]);
+        $this->validateMethodParams($params, "rpc.filemanager.paths");
+        $items = [];
+        foreach ($this->splitTokens($params['paths']) as $token) {
+            list($rootReal, $relPath, $path) = $this->resolve(
+                $params['uuid'], $token, $context, true, false);
+            if ($path === $rootReal) {
+                throw new \OMV\Exception("The shared folder root cannot " .
+                    "be duplicated.");
+            }
+            if (!file_exists($path) && !is_link($path)) {
+                throw new \OMV\Exception("'%s' does not exist.", $relPath);
+            }
+            $this->assertTreeAccess($context, $rootReal, $path, false);
+            $this->assertAccess($context, $rootReal, dirname($path),
+                ["-w", "-x"]);
+            $items[] = [$relPath, $path];
+        }
+        return $this->execBgProc(function ($bgStatusFilename,
+            $bgOutputFilename) use ($params, $context, $items) {
+            $errors = [];
+            foreach ($items as list($relPath, $path)) {
+                $target = $this->copyPath($path);
+                $cmd = new \OMV\System\Process("cp", ["-a", "-v", "-T",
+                    "--reflink=auto", "--", escapeshellarg($path),
+                    escapeshellarg($target)]);
+                $cmd->setRedirect2to1();
+                if (0 !== $this->exec($cmd->getCommandLine(), $output,
+                    $bgOutputFilename)) {
+                    $errors[] = sprintf("Failed to duplicate '%s'.",
+                        $relPath);
+                    continue;
+                }
+                $this->audit($context, "duplicate", $params['uuid'],
+                    $relPath, "-> " . basename($target));
+            }
+            if (!empty($errors)) {
+                throw new \OMV\Exception(implode(PHP_EOL, $errors));
+            }
+            $this->bgOutput($bgOutputFilename, "Done.");
+            return "";
+        });
+    }
+
+    /**
+     * Get the relative path from a directory to a path, both absolute and
+     * canonical.
+     */
+    private function relativePath($fromDir, $to)
+    {
+        $from = array_values(array_filter(explode("/", $fromDir), "strlen"));
+        $to = array_values(array_filter(explode("/", $to), "strlen"));
+        while (!empty($from) && !empty($to) && ($from[0] === $to[0])) {
+            array_shift($from);
+            array_shift($to);
+        }
+        $result = implode("/", array_merge(array_fill(0, count($from), ".."),
+            $to));
+        return ($result === "") ? "." : $result;
+    }
+
+    /**
+     * Create a symbolic link to an item in a folder of the same shared
+     * folder. The link is relative, so it keeps working when the shared
+     * folder is accessed via another path, e.g. in a container.
+     */
+    public function mkLink($params, $context)
+    {
+        $this->validateMethodContext($context, [
+            "role" => OMV_ROLE_EVERYONE
+        ]);
+        $this->validateMethodParams($params, "rpc.filemanager.mklink");
+        list($rootReal, $relPath, $target) = $this->resolve(
+            $params['uuid'], $params['path'], $context);
+        if (!file_exists($target)) {
+            throw new \OMV\Exception("'%s' does not exist.", $relPath);
+        }
+        list($destRoot, $destRel, $dest) = $this->resolveRel(
+            $params['uuid'], $params['destpath'], $context, true);
+        if (!is_dir($dest)) {
+            throw new \OMV\Exception("The destination folder does not " .
+                "exist.");
+        }
+        $this->assertAccess($context, $destRoot, $dest, ["-w", "-x"]);
+        $name = $this->validateName($params['name']);
+        $link = build_path(DIRECTORY_SEPARATOR, $dest, $name);
+        if (file_exists($link) || is_link($link)) {
+            throw new \OMV\Exception("'%s' already exists.", $name);
+        }
+        if (!symlink($this->relativePath($dest, $target), $link)) {
+            throw new \OMV\Exception("Failed to create the link '%s'.",
+                $name);
+        }
+        $this->inheritOwnership($link, $context);
+        $this->audit($context, "symlink", $params['uuid'],
+            $this->joinRel($destRel, $name), "-> /" . $this->relOf($rootReal,
+            $target));
+    }
+
+    /**
+     * Show the size of the items in a folder, largest first, like
+     * `du -d 1`. Folders the caller may not read are not counted.
+     */
+    public function diskUsage($params, $context)
+    {
+        $this->validateMethodContext($context, [
+            "role" => OMV_ROLE_EVERYONE
+        ]);
+        $this->validateMethodParams($params, "rpc.filemanager.path");
+        list($rootReal, $relPath, $dir) = $this->resolve($params['uuid'],
+            $params['path'], $context);
+        if (!is_dir($dir)) {
+            throw new \OMV\Exception("'%s' is not a folder.", $relPath);
+        }
+        $this->assertAccess($context, $rootReal, $dir, ["-r", "-x"]);
+        $showHidden = boolvalEx($this->settings()['showhidden']);
+        return $this->execBgProc(function ($bgStatusFilename,
+            $bgOutputFilename) use ($params, $context, $relPath, $dir,
+            $showHidden) {
+            $this->bgOutput($bgOutputFilename, sprintf("%s:/%s",
+                $this->getShare($params['uuid'])['name'], ($relPath === ".") ?
+                "" : $relPath));
+            $this->bgOutput($bgOutputFilename, "Calculating ...");
+            // Like search(), the NUL separated output is base64 encoded.
+            $cmd = $this->userCommand($context, "du", ["-a", "-b", "-x",
+                "-d", "1", "-0", "--", escapeshellarg($dir), "2>/dev/null",
+                "|", "base64", "-w", "0"]);
+            $cmd->setQuiet(true);
+            $cmd->execute($output);
+            $total = 0;
+            $rows = [];
+            foreach (explode("\0", strval(base64_decode(implode("",
+                $output)))) as $record) {
+                $parts = explode("\t", $record, 2);
+                if (count($parts) !== 2) {
+                    continue;
+                }
+                list($size, $path) = [intval($parts[0]), $parts[1]];
+                if ($path === $dir) {
+                    $total = $size;
+                    continue;
+                }
+                $name = basename($path);
+                if (str_ends_with($name, self::PART_SUFFIX) ||
+                    (!$showHidden && ($name[0] === "."))) {
+                    continue;
+                }
+                $rows[] = [$size, $name . ((is_dir($path) &&
+                    !is_link($path)) ? "/" : "")];
+            }
+            usort($rows, function ($a, $b) {
+                return ($b[0] <=> $a[0]) ?: strnatcasecmp($a[1], $b[1]);
+            });
+            $this->bgOutput($bgOutputFilename, sprintf("Total: %s",
+                binary_format($total)));
+            $fsTotal = @disk_total_space($dir);
+            $fsFree = @disk_free_space($dir);
+            if ((false !== $fsTotal) && (false !== $fsFree)) {
+                $this->bgOutput($bgOutputFilename, sprintf(
+                    "File system: %s used of %s (%s free)", binary_format(
+                    $fsTotal - $fsFree), binary_format($fsTotal),
+                    binary_format($fsFree)));
+            }
+            $this->bgOutput($bgOutputFilename, "");
+            foreach (array_slice($rows, 0, self::USAGE_LIMIT) as
+                list($size, $name)) {
+                $pct = ($total > 0) ? ($size * 100 / $total) : 0;
+                $bar = intval(round($pct / 5));
+                $this->bgOutput($bgOutputFilename, sprintf(
+                    "%12s %5.1f%%  %s  %s", binary_format($size), $pct,
+                    str_repeat("#", $bar) . str_repeat(".", 20 - $bar),
+                    $name));
+            }
+            $rest = array_slice($rows, self::USAGE_LIMIT);
+            if (!empty($rest)) {
+                $this->bgOutput($bgOutputFilename, sprintf(
+                    "... and %d more item(s) (%s)", count($rest),
+                    binary_format(array_sum(array_column($rest, 0)))));
+            }
+            return "";
+        });
+    }
+
+    /* ------------------------------------------------------------------
+     * Share links
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Run a function on the share link database while holding its lock.
+     * The function gets the links by reference; changes are saved.
+     */
+    private function withShareDb(callable $fn)
+    {
+        if (!is_dir(self::SHARE_DIR) && !mkdir(self::SHARE_DIR, 0700,
+            true)) {
+            throw new \OMV\Exception("Failed to create '%s'.",
+                self::SHARE_DIR);
+        }
+        $lock = fopen(build_path(DIRECTORY_SEPARATOR, self::SHARE_DIR,
+            "sharelinks.lock"), "c");
+        if ((false === $lock) || !flock($lock, LOCK_EX)) {
+            throw new \OMV\Exception("Failed to lock the share links.");
+        }
+        try {
+            $file = build_path(DIRECTORY_SEPARATOR, self::SHARE_DIR,
+                self::SHARE_DB);
+            $links = is_file($file) ? json_decode(file_get_contents($file),
+                true) : [];
+            if (!is_array($links)) {
+                $links = [];
+            }
+            $orig = $links;
+            $result = $fn($links);
+            if ($links !== $orig) {
+                $this->writeJsonFile($file, $links);
+            }
+            return $result;
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    /**
+     * Write a JSON file atomically, readable by root only.
+     */
+    private function writeJsonFile($file, $data)
+    {
+        $tmpFile = $file . ".tmp";
+        @unlink($tmpFile);
+        $fh = fopen($tmpFile, "x");
+        if (false === $fh) {
+            throw new \OMV\Exception("Failed to write '%s'.", $file);
+        }
+        chmod($tmpFile, 0600);
+        $ok = fwrite($fh, json_encode_safe((object)$data,
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) && fflush($fh);
+        fclose($fh);
+        if (!$ok || !rename($tmpFile, $file)) {
+            @unlink($tmpFile);
+            throw new \OMV\Exception("Failed to write '%s'.", $file);
+        }
+    }
+
+    /**
+     * Get the download counters written by the share link server.
+     */
+    private function shareState()
+    {
+        $state = @json_decode(strval(@file_get_contents(self::SHARE_STATE)),
+            true);
+        return is_array($state) ? $state : [];
+    }
+
+    private function assertShareLinksAllowed($context)
+    {
+        $this->assertEnabled($context);
+        $settings = $this->settings();
+        if (!boolvalEx($settings['sharelinks'])) {
+            throw new \OMV\Exception("Share links are disabled.");
+        }
+        if (!$this->isAdmin($context) &&
+            !boolvalEx($settings['shareusers'])) {
+            throw new \OMV\Exception("Share links can only be created by " .
+                "administrators.");
+        }
+    }
+
+    private function assertShareToken($token)
+    {
+        if (1 !== preg_match('/^[A-Za-z0-9_-]{22}$/', strval($token))) {
+            throw new \OMV\Exception("Invalid share link.");
+        }
+    }
+
+    /**
+     * Get the context of the user that created a share link, as if that
+     * user called the RPC, so the same access checks apply.
+     */
+    private function shareLinkContext($username)
+    {
+        if (false === posix_getpwnam($username)) {
+            throw new \OMV\Exception("The user '%s' does not exist.",
+                $username);
+        }
+        $admin = in_array(\OMV\Environment::get("OMV_WEBGUI_ADMINGROUP_NAME",
+            "openmediavault-admin"), $this->getUserGroups($username), true);
+        return [
+            "username" => $username,
+            "role" => $admin ? OMV_ROLE_ADMINISTRATOR : OMV_ROLE_USER
+        ];
+    }
+
+    /**
+     * Get the numeric group IDs of a user.
+     */
+    private function getUserGids($username)
+    {
+        $cmd = new \OMV\System\Process("id", ["-G", "--",
+            escapeshellarg($username)]);
+        $cmd->setQuiet(true);
+        $cmd->execute($output, $exitStatus);
+        if (0 !== $exitStatus) {
+            return [];
+        }
+        return array_values(array_unique(array_map("intval", preg_split(
+            "/\s+/", trim(implode(" ", $output)), -1, PREG_SPLIT_NO_EMPTY))));
+    }
+
+    private function hashSharePassword($password)
+    {
+        $salt = random_bytes(16);
+        return sprintf("pbkdf2_sha256$%d$%s$%s",
+            self::SHARE_PBKDF2_ITERATIONS, base64_encode($salt),
+            base64_encode(hash_pbkdf2("sha256", $password, $salt,
+            self::SHARE_PBKDF2_ITERATIONS, 32, true)));
+    }
+
+    private function shareLinkUrl($token)
+    {
+        $settings = $this->settings();
+        $base = rtrim(trim(strval($settings['shareurl'])), "/");
+        if ($base === "") {
+            $tls = (strval($settings['sharesslcertificateref']) !== "");
+            $host = gethostname();
+            try {
+                $dns = \OMV\Config\Database::getInstance()->getAssoc(
+                    "conf.system.network.dns");
+                if (!empty($dns['hostname'])) {
+                    $host = $dns['hostname'] . (empty($dns['domainname']) ?
+                        "" : "." . $dns['domainname']);
+                }
+            } catch (\Exception $e) {
+            }
+            $port = intval($settings['shareport']);
+            $base = sprintf("%s://%s%s", $tls ? "https" : "http", $host,
+                ($port === ($tls ? 443 : 80)) ? "" : ":" . $port);
+        }
+        return $base . "/s/" . $token;
+    }
+
+    private function shareLinkStatus($link, $downloads)
+    {
+        if (($link['expires'] > 0) && ($link['expires'] <= time())) {
+            return "expired";
+        }
+        if (($link['maxdownloads'] > 0) &&
+            ($downloads >= $link['maxdownloads'])) {
+            return "exhausted";
+        }
+        return "active";
+    }
+
+    private function buildShareLinkRow($token, $link, $state)
+    {
+        try {
+            $sharename = $this->getShare($link['uuid'])['name'];
+        } catch (\Exception $e) {
+            $sharename = $link['uuid'];
+        }
+        $downloads = intval(array_value(array_value($state, $token, []),
+            "downloads", 0));
+        $dirRel = ($link['type'] === "dir") ? $link['path'] :
+            dirname($link['path']);
+        return [
+            "token" => $token,
+            "url" => $this->shareLinkUrl($token),
+            "uuid" => $link['uuid'],
+            "sharename" => $sharename,
+            "name" => ($link['path'] === ".") ? $sharename :
+                basename($link['path']),
+            "location" => "/" . (($link['path'] === ".") ? "" :
+                $link['path']),
+            "type" => $link['type'],
+            "creator" => $link['creator'],
+            "created" => $link['created'],
+            "expires" => $link['expires'],
+            "protected" => ($link['password'] !== ""),
+            "maxdownloads" => $link['maxdownloads'],
+            "downloads" => $downloads,
+            "lastaccess" => intval(array_value(array_value($state, $token,
+                []), "lastaccess", 0)),
+            "status" => $this->shareLinkStatus($link, $downloads),
+            "dirpath" => $this->encodePath($dirRel)
+        ];
+    }
+
+    /**
+     * Create a share link to a file or folder. Everyone who knows the
+     * link can download the file, or browse and download the folder,
+     * from the share link server, until the link expires or reaches the
+     * maximum number of downloads.
+     */
+    public function createShareLink($params, $context)
+    {
+        $this->validateMethodContext($context, [
+            "role" => OMV_ROLE_EVERYONE
+        ]);
+        $this->validateMethodParams($params,
+            "rpc.filemanager.createsharelink");
+        $this->assertShareLinksAllowed($context);
+        list($rootReal, $relPath, $path) = $this->resolve($params['uuid'],
+            $params['path'], $context);
+        $canonRel = $this->relOf($rootReal, $path);
+        if ($this->isInTrash($canonRel)) {
+            throw new \OMV\Exception("Items in the trash cannot be shared.");
+        }
+        if (is_dir($path)) {
+            $type = "dir";
+            $this->assertAccess($context, $rootReal, $path, ["-r", "-x"]);
+        } elseif (is_file($path)) {
+            $type = "file";
+            $this->assertAccess($context, $rootReal, $path, ["-r"]);
+        } else {
+            throw new \OMV\Exception("Only files and folders can be shared.");
+        }
+        $token = rtrim(strtr(base64_encode(random_bytes(16)), "+/", "-_"),
+            "=");
+        $days = intval($params['expires']);
+        $password = strval(array_value($params, "password", ""));
+        $link = [
+            "uuid" => $params['uuid'],
+            "path" => $canonRel,
+            "type" => $type,
+            "creator" => $context['username'],
+            "created" => time(),
+            "expires" => ($days > 0) ? (time() + ($days * 86400)) : 0,
+            "password" => ($password === "") ? "" :
+                $this->hashSharePassword($password),
+            "maxdownloads" => intval($params['maxdownloads'])
+        ];
+        $this->withShareDb(function (&$links) use ($token, $link) {
+            $links[$token] = $link;
+        });
+        $this->writeShareExport();
+        $this->audit($context, "sharelink-create", $params['uuid'],
+            $canonRel, sprintf("(expires: %s, password: %s, max. " .
+            "downloads: %s)", ($days > 0) ? date("c", $link['expires']) :
+            "never", ($password === "") ? "no" : "yes",
+            ($link['maxdownloads'] > 0) ? $link['maxdownloads'] :
+            "unlimited"));
+        return $this->buildShareLinkRow($token, $link, []);
+    }
+
+    /**
+     * List the share links. Administrators see all links, users only
+     * their own.
+     */
+    public function getShareLinkList($params, $context)
+    {
+        $this->validateMethodContext($context, [
+            "role" => OMV_ROLE_EVERYONE
+        ]);
+        $this->validateMethodParams($params, "rpc.common.getlist");
+        $this->assertEnabled($context);
+        $links = $this->withShareDb(function (&$links) {
+            return $links;
+        });
+        $state = $this->shareState();
+        $result = [];
+        foreach ($links as $token => $link) {
+            if (!$this->isAdmin($context) &&
+                ($link['creator'] !== $context['username'])) {
+                continue;
+            }
+            $result[] = $this->buildShareLinkRow($token, $link, $state);
+        }
+        return $this->applyFilter($result, $params['start'],
+            $params['limit'], $params['sortfield'], $params['sortdir']);
+    }
+
+    public function deleteShareLink($params, $context)
+    {
+        $this->validateMethodContext($context, [
+            "role" => OMV_ROLE_EVERYONE
+        ]);
+        $this->validateMethodParams($params, "rpc.filemanager.sharelink");
+        $this->assertEnabled($context);
+        $this->assertShareToken($params['token']);
+        $link = $this->withShareDb(function (&$links) use ($params,
+            $context) {
+            $link = array_value($links, $params['token']);
+            if (is_null($link)) {
+                throw new \OMV\Exception("The share link does not exist.");
+            }
+            if (!$this->isAdmin($context) &&
+                ($link['creator'] !== $context['username'])) {
+                throw new \OMV\Exception("You can only delete your own " .
+                    "share links.");
+            }
+            unset($links[$params['token']]);
+            return $link;
+        });
+        $this->writeShareExport();
+        $this->audit($context, "sharelink-delete", $link['uuid'],
+            $link['path']);
+    }
+
+    /**
+     * Check a share link with the privileges of the user that created it
+     * and get its entry for the share link server.
+     * @throw \OMV\Exception If the link may not be used (anymore).
+     */
+    private function exportShareLink($link)
+    {
+        $settings = $this->settings();
+        if (($link['expires'] > 0) && ($link['expires'] <= time())) {
+            throw new \OMV\Exception("The link has expired.");
+        }
+        $context = $this->shareLinkContext($link['creator']);
+        if (!$this->isAdmin($context) &&
+            !boolvalEx($settings['shareusers'])) {
+            throw new \OMV\Exception("Share links of users are disabled.");
+        }
+        // This checks whether the file manager is available for the user,
+        // the shared folder is available in the file manager and the
+        // shared folder privileges of the user.
+        list($rootReal, $relPath, $path) = $this->resolveRel($link['uuid'],
+            $link['path'], $context);
+        // The path must not lead somewhere else now, e.g. through a
+        // symlink created in the meantime.
+        if (($this->relOf($rootReal, $path) !== $link['path']) ||
+            ($this->isInTrash($link['path']))) {
+            throw new \OMV\Exception("The shared item was moved.");
+        }
+        if (($link['type'] === "dir") ? !is_dir($path) : !is_file($path)) {
+            throw new \OMV\Exception("The shared item does not exist.");
+        }
+        $this->assertAccess($context, $rootReal, $path,
+            ($link['type'] === "dir") ? ["-r", "-x"] : ["-r"]);
+        $creds = null;
+        if (!$this->isAdmin($context)) {
+            list($uid, $gid) = $this->callerIds($context);
+            $creds = [
+                "uid" => $uid,
+                "gids" => array_values(array_unique(array_merge([$gid],
+                    $this->getUserGids($link['creator']))))
+            ];
+        }
+        return [
+            "root" => $rootReal,
+            "sharename" => $this->getShare($link['uuid'])['name'],
+            "path" => $link['path'],
+            "type" => $link['type'],
+            "expires" => $link['expires'],
+            "password" => $link['password'],
+            "maxdownloads" => $link['maxdownloads'],
+            "creator" => $link['creator'],
+            "creds" => $creds
+        ];
+    }
+
+    /**
+     * Write the file read by the share link server. It contains the
+     * server settings and only the links that may currently be used,
+     * checked with the privileges of the users that created them, so the
+     * server never needs access to the OMV configuration or the RPC.
+     */
+    private function writeShareExport()
+    {
+        $settings = $this->settings();
+        $this->withShareDb(function (&$links) use ($settings) {
+            $tls = null;
+            $certRef = strval($settings['sharesslcertificateref']);
+            if ($certRef !== "") {
+                $dir = \OMV\Environment::get("OMV_SSL_CERTIFICATE_DIR",
+                    "/etc/ssl");
+                $prefix = \OMV\Environment::get(
+                    "OMV_SSL_CERTIFICATE_PREFIX", "openmediavault-");
+                $tls = [
+                    "cert" => sprintf("%s/certs/%s%s.crt", $dir, $prefix,
+                        $certRef),
+                    "key" => sprintf("%s/private/%s%s.key", $dir, $prefix,
+                        $certRef)
+                ];
+            }
+            $export = [];
+            if (boolvalEx($settings['enable']) &&
+                boolvalEx($settings['sharelinks'])) {
+                foreach ($links as $token => $link) {
+                    try {
+                        $export[$token] = $this->exportShareLink($link);
+                    } catch (\Exception $e) {
+                        continue;
+                    }
+                }
+            }
+            $this->writeJsonFile(build_path(DIRECTORY_SEPARATOR,
+                self::SHARE_DIR, self::SHARE_EXPORT), [
+                "version" => 1,
+                "port" => intval($settings['shareport']),
+                "tls" => $tls,
+                "showhidden" => boolvalEx($settings['showhidden']),
+                "auditlog" => boolvalEx($settings['auditlog']),
+                "links" => (object)$export
+            ]);
+        });
+    }
+
+    /**
+     * Check all share links again, e.g. after shared folder privileges
+     * or file permissions were changed. Called daily by
+     * openmediavault-filemanager-purgetrash.timer.
+     */
+    public function syncShareLinks($params, $context)
+    {
+        $this->validateMethodContext($context, [
+            "role" => OMV_ROLE_ADMINISTRATOR
+        ]);
+        $this->writeShareExport();
+    }
+
+    /**
+     * Start, restart or stop the share link server.
+     */
+    private function applyShareService()
+    {
+        $settings = $this->settings();
+        $unit = new \OMV\System\SystemCtl(self::SHARE_SERVICE);
+        if (boolvalEx($settings['enable']) &&
+            boolvalEx($settings['sharelinks'])) {
+            $unit->enable();
+            $unit->restart();
+        } else {
+            $unit->disable(true);
+        }
     }
 }

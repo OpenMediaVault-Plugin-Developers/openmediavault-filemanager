@@ -2,3 +2,11 @@
 
 %:
 	dh $@
+
+override_dh_installsystemd:
+	dh_installsystemd --name=openmediavault-filemanager-purgetrash \
+		openmediavault-filemanager-purgetrash.timer
+	# Enabled and started by the FileManager RPC when share links are
+	# enabled in the settings.
+	dh_installsystemd --name=openmediavault-filemanager-share \
+		--no-enable --no-start

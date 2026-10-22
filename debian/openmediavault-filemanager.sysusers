@@ -1,0 +1,2 @@
+# The HTTP server process of the share link server runs as this user.
+u omv-fm-share - "openmediavault File Manager share links" /nonexistent /usr/sbin/nologin

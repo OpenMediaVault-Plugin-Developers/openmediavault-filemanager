@@ -1,0 +1,8 @@
+version: "1.0"
+type: navigation-item
+data:
+  path: "services.filemanager.trash"
+  text: _("Trash")
+  position: 13
+  icon: "mdi:delete-restore"
+  url: "/services/filemanager/trash"

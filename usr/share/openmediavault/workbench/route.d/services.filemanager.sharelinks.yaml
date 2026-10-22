@@ -1,0 +1,6 @@
+version: "1.0"
+type: route
+data:
+  url: "/services/filemanager/sharelinks"
+  title: _("Share links")
+  component: omv-services-filemanager-sharelinks-datatable-page

@@ -13,6 +13,13 @@ case "$1" in
 
         # Rebuild the workbench so the new pages/RPC are registered.
         dpkg-trigger update-workbench
+
+        # Restart the share link server after an upgrade, if enabled.
+        if [ -d /run/systemd/system ] && systemctl --quiet is-enabled \
+                openmediavault-filemanager-share.service 2>/dev/null; then
+            deb-systemd-invoke try-restart \
+                openmediavault-filemanager-share.service || true
+        fi
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)
@@ -23,5 +30,7 @@ case "$1" in
         exit 1
     ;;
 esac
+
+#DEBHELPER#
 
 exit 0

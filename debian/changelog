@@ -6,7 +6,8 @@ openmediavault-filemanager (8.0) stable; urgency=low
     the breadcrumb, and search recursively by name. Click a folder name
     to open it and a file name to open it in a new browser tab.
   * Create folders and files, rename, copy and move (also between shared
-    folders), change permissions and owner.
+    folders), duplicate, create relative symbolic links, change
+    permissions and owner.
   * Edit text files with a size limit; files are saved atomically, and
     not at all if they were changed by someone else in the meantime.
   * Calculate MD5/SHA-1/SHA-256/SHA-512 checksums of files.
@@ -15,8 +16,15 @@ openmediavault-filemanager (8.0) stable; urgency=low
     files are downloaded).
   * Download files from http:// and https:// URLs into a folder;
     local and private addresses are refused.
-  * Compress to ZIP/tar.gz and extract archives.
-  * Trash compatible with the Samba recycle bin, with restore.
+  * Compress to ZIP/tar.gz and extract archives, including 7z, RAR and
+    ISO images.
+  * Disk usage of folders, largest items first.
+  * Trash compatible with the Samba recycle bin, with restore, a page
+    listing the deleted items of all shared folders and an optional
+    automatic cleanup of old items.
+  * Share links to files and folders with optional password, expiry and
+    download limit, served by a separate, privilege separated server on
+    its own port.
   * Audit log in Diagnostics | System Logs.
   * Settings page and optional access for non-administrative users based
     on the shared folder privileges and the file system permissions.

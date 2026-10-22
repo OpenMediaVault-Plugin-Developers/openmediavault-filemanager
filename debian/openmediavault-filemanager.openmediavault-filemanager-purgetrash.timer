@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily openmediavault File Manager trash cleanup
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

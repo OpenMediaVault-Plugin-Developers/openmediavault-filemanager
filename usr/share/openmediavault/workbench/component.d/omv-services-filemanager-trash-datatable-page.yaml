@@ -1,0 +1,132 @@
+version: "1.0"
+type: component
+data:
+  name: omv-services-filemanager-trash-datatable-page
+  type: datatablePage
+  config:
+    autoReload: false
+    hasSearchField: true
+    rowId: id
+    rowEnumFmt: "{{ sharename }}:{{ location }}/{{ name }}"
+    stateId: 0d8f2b6e-3c41-4a57-9e0a-7b52c1f4d9a3
+    sorters:
+      - dir: desc
+        prop: deleted
+    store:
+      proxy:
+        service: FileManager
+        get:
+          method: getTrashList
+    columns:
+      - name: _("Name")
+        prop: name
+        flexGrow: 3
+        sortable: true
+      - name: _("Original location")
+        prop: location
+        flexGrow: 3
+        sortable: true
+        cellTemplateName: template
+        cellTemplateConfig: "{{ sharename }}:{{ location }}"
+      - name: _("Type")
+        prop: type
+        flexGrow: 1
+        sortable: true
+        cellTemplateName: chip
+        cellTemplateConfig:
+          map:
+            dir:
+              value: _("Folder")
+            file:
+              value: _("File")
+            link:
+              value: _("Link")
+      - name: _("Size")
+        prop: size
+        flexGrow: 1
+        sortable: true
+        cellTemplateName: template
+        cellTemplateConfig: '{{ "-" if size < 0 else (size | tobytes | binaryunit) }}'
+      - name: _("Deleted")
+        prop: deleted
+        flexGrow: 2
+        sortable: true
+        cellTemplateName: localeDateTime
+      - name: _("Deleted by")
+        prop: user
+        flexGrow: 1
+        sortable: true
+      - name: _("Shared folder")
+        prop: sharename
+        flexGrow: 1
+        sortable: true
+        hidden: true
+    actions:
+      - type: iconButton
+        icon: mdi:restore
+        tooltip: _("Restore")
+        enabledConstraints:
+          minSelected: 1
+          constraint:
+            - operator: falsy
+              arg0:
+                prop: conflict
+        execute:
+          type: request
+          request:
+            service: FileManager
+            method: restore
+            params:
+              uuid: "{{ uuid }}"
+              path: "{{ path }}"
+            progressMessage: _("Restoring ...")
+            successNotification: _("Restored.")
+      - type: iconButton
+        icon: mdi:folder-open-outline
+        tooltip: _("Open original folder")
+        enabledConstraints:
+          minSelected: 1
+          maxSelected: 1
+          constraint:
+            - operator: truthy
+              arg0:
+                prop: origdir
+        execute:
+          type: url
+          url: "/services/filemanager/browse/{{ _selected[0].uuid }}/{{ _selected[0].origdir }}"
+      - type: iconButton
+        icon: mdi:delete-forever-outline
+        tooltip: _("Delete permanently")
+        enabledConstraints:
+          minSelected: 1
+        confirmationDialogConfig:
+          template: confirmation-danger
+          title: _("Delete permanently")
+          message: _("Do you really want to permanently delete the selected item(s)? This cannot be undone.")
+        execute:
+          type: request
+          request:
+            service: FileManager
+            method: delete
+            params:
+              uuid: "{{ uuid }}"
+              path: "{{ path }}"
+              permanent: true
+            progressMessage: _("Deleting ...")
+            successNotification: _("Deleted.")
+      # Runs the daily cleanup now (administrators only).
+      - type: iconButton
+        icon: mdi:broom
+        tooltip: _("Delete old items now")
+        confirmationDialogConfig:
+          template: confirmation-danger
+          message: _("Do you really want to permanently delete the items that are in the trash for longer than configured in the settings?")
+        execute:
+          type: taskDialog
+          taskDialog:
+            config:
+              title: _("Cleaning up the trash ...")
+              startOnInit: true
+              request:
+                service: FileManager
+                method: purgeTrash

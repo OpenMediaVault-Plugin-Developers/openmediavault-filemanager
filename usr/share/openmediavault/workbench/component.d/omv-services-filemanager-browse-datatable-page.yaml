@@ -396,6 +396,71 @@ data:
                             params:
                               <<: *transferParams
                               mode: move
+          # Copy the items next to themselves, e.g. `a (copy).txt`.
+          - text: _("Duplicate")
+            icon: mdi:content-duplicate
+            enabledConstraints:
+              minSelected: 1
+              constraint:
+                - operator: ne
+                  arg0:
+                    prop: type
+                  arg1: parentdir
+            execute:
+              type: taskDialog
+              taskDialog:
+                config:
+                  title: _("Duplicating ...")
+                  startOnInit: true
+                  request:
+                    service: FileManager
+                    method: duplicate
+                    params:
+                      uuid: "{{ _selected[0].uuid }}"
+                      paths: '{{ _selected | join(",", "path") }}'
+          - text: _("Create symbolic link ...")
+            icon: mdi:link-variant
+            enabledConstraints:
+              minSelected: 1
+              maxSelected: 1
+              constraint:
+                - operator: in
+                  arg0:
+                    prop: type
+                  arg1: ["dir", "file"]
+            execute:
+              type: formDialog
+              formDialog:
+                title: _("Create symbolic link")
+                fields:
+                  - type: hidden
+                    name: uuid
+                    value: "{{ _selected[0].uuid }}"
+                  - type: hidden
+                    name: path
+                    value: "{{ _selected[0].path }}"
+                  - type: folderBrowser
+                    name: destpath
+                    label: _("Folder")
+                    hint: _("The folder to create the link in, relative to the shared folder. The link points to the selected item with a relative path, so it keeps working when the shared folder is accessed via another path, e.g. in a container.")
+                    value: "{{ _selected[0].location }}"
+                    dirType: sharedfolder
+                    dirRefIdField: uuid
+                  - type: textInput
+                    name: name
+                    label: _("Link name")
+                    value: "{{ _selected[0].name }}"
+                    validators:
+                      required: true
+                buttons:
+                  submit:
+                    text: _("Create")
+                    execute:
+                      type: request
+                      request:
+                        service: FileManager
+                        method: mkLink
+                        successNotification: _("Link created.")
       - type: menu
         icon: mdi:archive-outline
         tooltip: _("Archive")
@@ -619,6 +684,93 @@ data:
                 params:
                   uuid: "{{ _selected[0].uuid }}"
                   path: "{{ _selected[0].path }}"
+      # The size of the items in the selected folder, or in the current
+      # folder if nothing is selected.
+      - type: iconButton
+        icon: mdi:chart-donut
+        tooltip: _("Disk usage")
+        enabledConstraints:
+          maxSelected: 1
+          constraint:
+            - operator: eq
+              arg0:
+                prop: type
+              arg1: dir
+        execute:
+          type: taskDialog
+          taskDialog:
+            config:
+              title: _("Disk usage")
+              startOnInit: true
+              request:
+                service: FileManager
+                method: diskUsage
+                params:
+                  uuid: "{{ _routeParams.uuid or _selected[0].uuid }}"
+                  path: "{{ _selected[0].path if (_selected | length) else (_routeParams.path or _selected[0].dirpath) }}"
+      - type: menu
+        icon: mdi:share-variant-outline
+        tooltip: _("Share link")
+        actions:
+          - text: _("Create share link ...")
+            icon: mdi:link-plus
+            enabledConstraints:
+              minSelected: 1
+              maxSelected: 1
+              constraint:
+                - operator: in
+                  arg0:
+                    prop: type
+                  arg1: ["dir", "file"]
+            execute:
+              type: formDialog
+              formDialog:
+                title: _("Create share link")
+                fields:
+                  - type: hidden
+                    name: uuid
+                    value: "{{ _selected[0].uuid }}"
+                  - type: hidden
+                    name: path
+                    value: "{{ _selected[0].path }}"
+                  - type: numberInput
+                    name: expires
+                    label: _("Expires after")
+                    hint: _("Number of days the link can be used. Set to 0 for a link that does not expire.")
+                    value: 7
+                    validators:
+                      required: true
+                      min: 0
+                      max: 3650
+                  - type: passwordInput
+                    name: password
+                    label: _("Password")
+                    hint: _("Optional. Required to use the link.")
+                    value: ""
+                  - type: numberInput
+                    name: maxdownloads
+                    label: _("Maximum downloads")
+                    hint: _("The link stops working after this number of downloads. Set to 0 for no limit.")
+                    value: 0
+                    validators:
+                      required: true
+                      min: 0
+                      max: 1000000
+                buttons:
+                  submit:
+                    text: _("Create")
+                    execute:
+                      type: request
+                      request:
+                        service: FileManager
+                        method: createShareLink
+                        successNotification: _("Share link created.")
+                        successUrl: /services/filemanager/sharelinks
+          - text: _("Manage share links")
+            icon: mdi:link-box-variant-outline
+            execute:
+              type: url
+              url: "/services/filemanager/sharelinks"
       - type: iconButton
         icon: mdi:fingerprint
         tooltip: _("Checksum")
@@ -722,6 +874,11 @@ data:
               # The path token of ".recycle", on the other folder route
               # than the current one, see getList.
               url: "/services/filemanager/{{ 'browse' if _routeUrlSegments[2] == 'open' else 'open' }}/{{ _routeParams.uuid or _selected[0].uuid }}/LnJlY3ljbGU"
+          - text: _("Show all trash items")
+            icon: mdi:format-list-bulleted
+            execute:
+              type: url
+              url: "/services/filemanager/trash"
           - text: _("Empty trash")
             icon: mdi:delete-empty-outline
             confirmationDialogConfig:

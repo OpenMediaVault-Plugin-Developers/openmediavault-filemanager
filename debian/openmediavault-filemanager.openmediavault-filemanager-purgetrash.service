@@ -1,0 +1,11 @@
+[Unit]
+Description=openmediavault File Manager trash cleanup and share link check
+After=openmediavault-engined.service
+Requires=openmediavault-engined.service
+
+[Service]
+Type=oneshot
+# Delete items that are in the trash for longer than configured.
+ExecStart=/usr/sbin/omv-rpc -u admin FileManager purgeTrash "{}"
+# Check the share links again, e.g. after privileges were changed.
+ExecStart=/usr/sbin/omv-rpc -u admin FileManager syncShareLinks "{}"
