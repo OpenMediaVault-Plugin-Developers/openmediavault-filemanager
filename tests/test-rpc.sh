@@ -297,7 +297,14 @@ GETLIST='{"start":0,"limit":null,"sortfield":"name","sortdir":"asc"}'
 cleanup() {
     section "Cleanup"
 
-    for t in "${SHARE_TOKENS[@]}"; do
+    # Also remove links into test folders that were left behind, e.g. by
+    # an aborted run. Deleting needs the file manager to be enabled.
+    local t tokens
+    [ -n "$BASE_SETTINGS" ] && set_settings '.'
+    tokens=$(omv-rpc -u admin "FileManager" "getShareLinkList" "$GETLIST" 2>/dev/null \
+        | jq -r '.data[] | select(.location | startswith("/fm-rpctest-")) | .token' \
+        2>/dev/null) || true
+    for t in "${SHARE_TOKENS[@]}" $tokens; do
         omv-rpc -u admin "FileManager" "deleteShareLink" "{\"token\":\"$t\"}" \
             &>/dev/null || true
     done
@@ -1162,14 +1169,15 @@ CURL=(curl -s --max-time 20)
 mklinkp() {  # $1 path, [$2 password], [$3 max downloads], [$4 days]
     echo "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$1")\",\"expires\":${4:-1},\"password\":\"${2:-}\",\"maxdownloads\":${3:-0}}"
 }
-# Create a share link and echo its token.
+# Create a share link and store its token in TOK. Not to be called in a
+# command substitution, the token must be recorded for the cleanup.
 share() {
-    local out token
+    local out
+    TOK=""
     out=$(omv-rpc -u "$RPC_USER" "FileManager" "createShareLink" "$(mklinkp "$@")" 2>/dev/null) || return 1
-    token=$(echo "$out" | jq -r '.token')
-    [ -n "$token" ] && [ "$token" != "null" ] || return 1
-    SHARE_TOKENS+=("$token")
-    echo "$token"
+    TOK=$(echo "$out" | jq -r '.token')
+    [ -n "$TOK" ] && [ "$TOK" != "null" ] || return 1
+    SHARE_TOKENS+=("$TOK")
 }
 http_status() { "${CURL[@]}" -o /dev/null -w '%{http_code}' "$@"; }
 downloads() {
@@ -1198,7 +1206,7 @@ check "share server — broker has no sockets to the network" \
 check "share server — export readable by root only" \
     test "$(stat -c '%U %a' "$EXPORT")" = "root 600"
 
-if TOK=$(share "$T/pic.png"); then
+if share "$T/pic.png"; then
     _pass "createShareLink — file"
     OUT=$(omv-rpc -u admin "FileManager" "getShareLinkList" "$GETLIST")
     jcheck "getShareLinkList — link listed" "$OUT" \
@@ -1219,7 +1227,7 @@ else
     _fail "createShareLink — file"
 fi
 
-if TOK=$(share "$T/a.txt" "pw-$$" 1); then
+if share "$T/a.txt" "pw-$$" 1; then
     _pass "createShareLink — with password and download limit"
     JAR=$(mktemp); STAGED+=("$JAR")
     check "share server — password required" test "$(http_status "$SHARE_BASE/$TOK?dl=1")" = 401
@@ -1240,7 +1248,7 @@ else
     _fail "createShareLink — with password and download limit"
 fi
 
-if TOK=$(share "$T/sub"); then
+if share "$T/sub"; then
     _pass "createShareLink — folder"
     check "share server — folder redirects to a trailing slash" \
         test "$(http_status "$SHARE_BASE/$TOK")" = 301
@@ -1275,7 +1283,7 @@ assert_rpc_fails "createShareLink — negative expiry rejected" "FileManager" "c
     "$(mklinkp "$T/pic.png" "" 0 -1)"
 
 printf 'gone' > "$TEST_DIR/gone.txt"
-if TOK=$(share "$T/gone.txt"); then
+if share "$T/gone.txt"; then
     rm -f "$TEST_DIR/gone.txt"
     check "share server — removed file not served" test "$(http_status "$SHARE_BASE/$TOK?dl=1")" = 404
     printf 'evil' > "$OUTSIDE_DIR/evil"
@@ -1411,12 +1419,13 @@ else
             '(any(.data[]; .location == $l)) | not' --arg l "/$T/private"
     RPC_USER="admin"
     set_settings '.allowusers = true | .sharelinks = true'
-    ADMIN_TOK=$(share "$T/pic.png")
+    share "$T/pic.png"; ADMIN_TOK=$TOK
     RPC_USER="$TEST_USER"
     assert_rpc_fails "user — share links refused while not allowed for users" "FileManager" \
         "createShareLink" "$(mklinkp "$T/public.txt")" "administrators"
     set_settings '.allowusers = true | .sharelinks = true | .shareusers = true'
-    if UTOK=$(share "$T/public.txt"); then
+    if share "$T/public.txt"; then
+        UTOK=$TOK
         _pass "user — createShareLink"
         check "user — link served" test "$("${CURL[@]}" "$SHARE_BASE/$UTOK?dl=1")" = "public"
         check "share export — user link carries the user's IDs" \
