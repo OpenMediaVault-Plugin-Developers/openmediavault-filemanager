@@ -37,6 +37,9 @@ Desktop.ini
 
 # OpenMediaVault / Debian
 debian/openmediavault-*
+!debian/openmediavault-filemanager.*.service
+!debian/openmediavault-filemanager.*.timer
+!debian/openmediavault-filemanager.sysusers
 debian/files
 debian/*.debhelper.log
 debian/*.debhelper
