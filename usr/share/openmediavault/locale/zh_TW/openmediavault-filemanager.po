@@ -52,28 +52,28 @@ msgid "Archive name"
 msgstr "歸檔名稱"
 
 msgid "Audit log"
-msgstr ""
+msgstr "稽核日誌"
 
 msgid "Broken link"
-msgstr ""
+msgstr "失效連結"
 
 msgid "Browse"
-msgstr ""
+msgstr "瀏覽"
 
 msgid "Browse as tree"
-msgstr ""
+msgstr "以樹狀結構瀏覽"
 
 msgid "Calculate"
-msgstr ""
+msgstr "計算"
 
 msgid "Change owner"
-msgstr ""
+msgstr "變更擁有者"
 
 msgid "Change owner ..."
-msgstr ""
+msgstr "變更擁有者 ..."
 
 msgid "Change permissions"
-msgstr ""
+msgstr "更改權限"
 
 msgid "Change permissions ..."
 msgstr ""

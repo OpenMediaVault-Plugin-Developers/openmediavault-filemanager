@@ -5,6 +5,7 @@
 # 
 # Translators:
 # Marcelo Esteves <marcelopge@gmail.com>, 2026
+# Jeann Cavalcante <wjeann@gmail.com>, 2026
 # 
 #, fuzzy
 msgid ""
@@ -13,7 +14,7 @@ msgstr ""
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-10-19 23:42+0000\n"
 "PO-Revision-Date: 2026-10-18 15:25+0000\n"
-"Last-Translator: Marcelo Esteves <marcelopge@gmail.com>, 2026\n"
+"Last-Translator: Jeann Cavalcante <wjeann@gmail.com>, 2026\n"
 "Language-Team: Portuguese (Brazil) (https://app.transifex.com/openmediavault-plugin-developers/teams/1854/pt_BR/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -24,6 +25,8 @@ msgstr ""
 msgid ""
 "A http:// or https:// URL. Addresses in the local network are not allowed."
 msgstr ""
+"Um endereço do tipo http:// ou https://. Endereços na rede local não são "
+"permitidos."
 
 msgid "Access"
 msgstr "Acessar"
@@ -32,7 +35,7 @@ msgid "Action"
 msgstr "Ação"
 
 msgid "Algorithm"
-msgstr ""
+msgstr "Algoritmo"
 
 msgid "Allow access"
 msgstr "Permitir acesso"
@@ -66,7 +69,7 @@ msgid "Browse as tree"
 msgstr "Navegar como árvore"
 
 msgid "Calculate"
-msgstr ""
+msgstr "Calcular"
 
 msgid "Change owner"
 msgstr "Mudar dono"
@@ -87,7 +90,7 @@ msgid "Changing permissions ..."
 msgstr "Mudando permissões ..."
 
 msgid "Checksum"
-msgstr ""
+msgstr "Checksum"
 
 msgid "Comment"
 msgstr "Comentar"
@@ -156,16 +159,16 @@ msgstr ""
 "Esta ação não pode ser desfeita."
 
 msgid "Docs"
-msgstr ""
+msgstr "Documentos"
 
 msgid "Download"
 msgstr "Download"
 
 msgid "Download from URL"
-msgstr ""
+msgstr "Baixar da URL"
 
 msgid "Downloading ..."
-msgstr ""
+msgstr "Baixando..."
 
 msgid "Edit"
 msgstr "Editar"
@@ -183,7 +186,7 @@ msgid "Enabled"
 msgstr "Habilitado"
 
 msgid "Enter a http:// or https:// URL."
-msgstr ""
+msgstr "Digite uma URL do tipo http:// ou https://."
 
 msgid "Enter an octal mode, e.g. 0775."
 msgstr "Entre em modo octal, ex. 0775."
@@ -204,7 +207,7 @@ msgid "File created."
 msgstr "Arquivo criado."
 
 msgid "File name"
-msgstr ""
+msgstr "Nome do arquivo"
 
 msgid "Folder"
 msgstr "Pasta"
@@ -219,7 +222,7 @@ msgid "Group"
 msgstr "Grupo"
 
 msgid "Leave empty to use the name provided by the server."
-msgstr ""
+msgstr "Deixe em branco para usar o nome fornecido pelo servidor."
 
 msgid ""
 "Let users that log in to the web interface browse the shared folders "
@@ -227,6 +230,11 @@ msgid ""
 "with SMB, the file system permissions and ACLs apply as well. Changing "
 "permissions and owners stays restricted to administrators."
 msgstr ""
+"Permita que os usuários que fizerem login na interface web naveguem pelas "
+"pastas compartilhadas de acordo com seus privilégios de acesso (somente "
+"leitura ou leitura/gravação). Assim como no SMB, as permissões do sistema de"
+" arquivos e as ACLs também se aplicam. A alteração de permissões e "
+"proprietários permanece restrita aos administradores."
 
 msgid "Link target"
 msgstr "Destino do link"
@@ -299,10 +307,10 @@ msgid "Open trash"
 msgstr "Abrir lixeira"
 
 msgid "Otherwise a number is appended to the name."
-msgstr ""
+msgstr "Caso contrário, um número é acrescentado ao nome."
 
 msgid "Overwrite an existing file"
-msgstr ""
+msgstr "Substituir um arquivo existente"
 
 msgid "Overwrite existing items"
 msgstr "Substituir itens existentes"
@@ -405,7 +413,7 @@ msgid "Type"
 msgstr "Tipo"
 
 msgid "URL"
-msgstr ""
+msgstr "URL"
 
 msgid "Upload files"
 msgstr "Enviar arquivos"
@@ -417,4 +425,4 @@ msgid "User"
 msgstr "Usuário"
 
 msgid "omv-extras.org wiki"
-msgstr ""
+msgstr "omv-extras.org wiki"
