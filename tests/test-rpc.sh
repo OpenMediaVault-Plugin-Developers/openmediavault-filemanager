@@ -9,9 +9,11 @@
 # search, copy/move, archives, symlinks pointing out of the shared folder,
 # permissions, properties, checksums, download/preview (incl. security
 # headers), chunked upload, download from URL (incl. blocking of local
-# addresses), the audit log and the access checks (read-only
-# mode, exposed shared folders, disabled, file system permissions of
-# non-administrative users).
+# addresses), duplicate, symbolic links, disk usage, 7z/ISO extraction, the
+# trash overview and cleanup, share links (incl. the isolated share link
+# server: downloads, passwords, limits, privilege separation), the audit
+# log and the access checks (read-only mode, exposed shared folders,
+# disabled, file system permissions of non-administrative users).
 #
 # Prerequisites:
 #   <sharedfolder> — name or UUID of an existing OMV shared folder that is
@@ -29,8 +31,9 @@
 # only tested if the shared folder has no '.recycle' folder yet, so existing
 # (e.g. Samba) recycle bin contents are never touched.
 #
-# WARNING: This script transiently modifies the FileManager settings. Run on
-# a test system or during a maintenance window.
+# WARNING: This script transiently modifies the FileManager settings and
+# starts the share link server on a free port. Run on a test system or
+# during a maintenance window.
 
 set -uo pipefail
 
@@ -283,6 +286,8 @@ WEBGUI_USER=$(. /etc/default/openmediavault 2>/dev/null; \
     echo "${OMV_WEBGUI_FILE_OWNERGROUP_NAME:-openmediavault-webgui}")
 declare -a CHUNKS=()
 declare -a STAGED=()
+declare -a SHARE_TOKENS=()
+SHARE_PORT=""
 
 GETLIST='{"start":0,"limit":null,"sortfield":"name","sortdir":"asc"}'
 
@@ -291,6 +296,11 @@ GETLIST='{"start":0,"limit":null,"sortfield":"name","sortdir":"asc"}'
 # ---------------------------------------------------------------------------
 cleanup() {
     section "Cleanup"
+
+    for t in "${SHARE_TOKENS[@]}"; do
+        omv-rpc -u admin "FileManager" "deleteShareLink" "{\"token\":\"$t\"}" \
+            &>/dev/null || true
+    done
 
     if [ -n "$ORIG_SETTINGS" ]; then
         info "Restoring original FileManager settings"
@@ -330,7 +340,7 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 section "Pre-flight"
 
-for cmd in omv-rpc jq python3 base64 journalctl sha256sum md5sum; do
+for cmd in omv-rpc jq python3 base64 journalctl sha256sum md5sum curl bsdtar; do
     if command -v "$cmd" &>/dev/null; then
         _pass "command available: $cmd"
     else
@@ -411,7 +421,8 @@ assert_rpc "getSettings" "FileManager" "getSettings" || {
     exit 1
 }
 ORIG_SETTINGS=$(echo "$OUT" | jq -c '.')
-for field in enable readonly showhidden maxeditsize sharedfolders usetrash auditlog allowusers; do
+for field in enable readonly showhidden maxeditsize sharedfolders usetrash auditlog allowusers \
+        trashretention sharelinks shareusers shareport sharesslcertificateref shareurl; do
     if echo "$ORIG_SETTINGS" | jq -e "has(\"$field\")" &>/dev/null; then
         _pass "getSettings — field '$field' present"
     else
@@ -421,10 +432,17 @@ done
 check "getSettings — sharedfolders is an array" \
     test "$(echo "$ORIG_SETTINGS" | jq -r '.sharedfolders | type')" = "array"
 
-# Known baseline for the tests: everything on, 1 MiB editor limit.
-BASE_SETTINGS=$(echo "$ORIG_SETTINGS" | jq -c '.enable = true | .readonly = false |
+# A free port for the share link server.
+SHARE_PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("", 0)); print(s.getsockname()[1])')
+
+# Known baseline for the tests: everything on, 1 MiB editor limit, share
+# links off.
+BASE_SETTINGS=$(echo "$ORIG_SETTINGS" | jq -c --argjson port "$SHARE_PORT" \
+    '.enable = true | .readonly = false |
     .showhidden = true | .maxeditsize = 1 | .sharedfolders = [] |
-    .usetrash = true | .auditlog = true | .allowusers = false')
+    .usetrash = true | .auditlog = true | .allowusers = false |
+    .trashretention = 0 | .sharelinks = false | .shareusers = false |
+    .shareport = $port | .sharesslcertificateref = "" | .shareurl = ""')
 assert_rpc "setSettings — test baseline" "FileManager" "setSettings" "$BASE_SETTINGS" \
     '"maxeditsize":1' >/dev/null
 assert_rpc_fails "setSettings — maxeditsize 0 rejected" "FileManager" "setSettings" \
@@ -436,6 +454,19 @@ assert_rpc "setSettings — select shared folder" "FileManager" "setSettings" \
     "$SF_UUID" >/dev/null
 assert_rpc "setSettings — all shared folders again" "FileManager" "setSettings" \
     "$BASE_SETTINGS" '"sharedfolders":\[\]' >/dev/null
+WEBGUI_PORT=$(omv-rpc -u admin "WebGui" "getSettings" '{}' 2>/dev/null | jq -r '.port // 80')
+assert_rpc_fails "setSettings — share port of the web interface rejected" "FileManager" \
+    "setSettings" "$(echo "$BASE_SETTINGS" | jq -c --argjson p "${WEBGUI_PORT:-80}" '.shareport = $p')"
+assert_rpc_fails "setSettings — privileged share port rejected" "FileManager" \
+    "setSettings" "$(echo "$BASE_SETTINGS" | jq -c '.shareport = 443')"
+assert_rpc_fails "setSettings — invalid public URL rejected" "FileManager" \
+    "setSettings" "$(echo "$BASE_SETTINGS" | jq -c '.shareurl = "ftp://x"')"
+assert_rpc_fails "setSettings — negative trash retention rejected" "FileManager" \
+    "setSettings" "$(echo "$BASE_SETTINGS" | jq -c '.trashretention = -1')"
+assert_rpc "setSettings — public URL trimmed" "FileManager" "setSettings" \
+    "$(echo "$BASE_SETTINGS" | jq -c '.shareurl = " https://files.example.com/x/ "')" \
+    '"shareurl":"https://files.example.com/x"' >/dev/null
+set_settings '.'
 
 # ===========================================================================
 section "Shared folders & enumerations"
@@ -673,6 +704,56 @@ assert_rpc_fails "transfer — destination outside the shared folder" "FileManag
     "escapes"
 
 # ===========================================================================
+section "Duplicate & symbolic links"
+# ===========================================================================
+
+assert_bg "duplicate — file and folder" "duplicate" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/pic.png"),$(tok "$T/dest")\"}" ok >/dev/null
+check "duplicate — 'pic (copy).png' and 'dest (copy)' created" \
+    bash -c "[ -f '$TEST_DIR/pic (copy).png' ] && [ -d '$TEST_DIR/dest (copy)/sub' ]"
+check "duplicate — content identical" \
+    cmp -s "$TEST_DIR/pic.png" "$TEST_DIR/pic (copy).png"
+assert_bg "duplicate — again numbers the copy" "duplicate" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/pic.png")\"}" ok >/dev/null
+check "duplicate — 'pic (copy 2).png' created" test -f "$TEST_DIR/pic (copy 2).png"
+assert_bg "duplicate — symlink copied as link" "duplicate" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/escape")\"}" ok >/dev/null
+check "duplicate — link not dereferenced" \
+    bash -c "[ -L '$TEST_DIR/escape (copy)' ] && [ \"\$(readlink '$TEST_DIR/escape (copy)')\" = '$OUTSIDE_DIR' ]"
+rm -f "$TEST_DIR/escape (copy)"
+assert_rpc_fails "duplicate — shared folder root refused" "FileManager" "duplicate" \
+    "{\"uuid\":\"$SF_UUID\",\"paths\":\"root\"}"
+rm -rf "$TEST_DIR/pic (copy).png" "$TEST_DIR/pic (copy 2).png" "$TEST_DIR/dest (copy)"
+
+mklink() {  # $1 target, $2 destination folder, $3 name
+    echo "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$1")\",\"destpath\":\"$2\",\"name\":\"$3\"}"
+}
+assert_rpc "mkLink — link to a file in another folder" "FileManager" "mkLink" \
+    "$(mklink "$T/sub/foo.log" "$T/dest" "foo-link.log")" >/dev/null
+check "mkLink — relative link target" \
+    test "$(readlink "$TEST_DIR/dest/foo-link.log")" = "../sub/foo.log"
+check "mkLink — link resolves to the file" \
+    test "$(cat "$TEST_DIR/dest/foo-link.log")" = "hello"
+check "mkLink — link owned like the folder" \
+    test "$(stat -c '%U:%G' "$TEST_DIR/dest/foo-link.log")" = "nobody:users"
+assert_rpc "mkLink — link to a folder at the top level" "FileManager" "mkLink" \
+    "$(mklink "$T/sub" "" "$TEST_NAME-sublink")" >/dev/null
+check "mkLink — top level link target" \
+    test "$(readlink "$SF_PATH/$TEST_NAME-sublink")" = "$T/sub"
+rm -f "$SF_PATH/$TEST_NAME-sublink"
+assert_rpc_fails "mkLink — existing name" "FileManager" "mkLink" \
+    "$(mklink "$T/sub/foo.log" "$T/dest" "foo-link.log")" "already exists"
+assert_rpc_fails "mkLink — target outside the shared folder" "FileManager" "mkLink" \
+    "$(mklink "$T/escape" "$T/dest" "out")" "escapes"
+assert_rpc_fails "mkLink — destination outside the shared folder" "FileManager" "mkLink" \
+    "$(mklink "$T/a.txt" "$T/escape" "out")" "escapes"
+assert_rpc_fails "mkLink — missing target" "FileManager" "mkLink" \
+    "$(mklink "$T/nope" "$T/dest" "x")"
+assert_rpc_fails "mkLink — invalid name" "FileManager" "mkLink" \
+    "$(mklink "$T/a.txt" "$T/dest" "../x")" "invalid name"
+check "mkLink — nothing created outside" test ! -e "$OUTSIDE_DIR/out"
+
+# ===========================================================================
 section "Archives"
 # ===========================================================================
 
@@ -710,6 +791,37 @@ check "extract — zip slip contained" \
     bash -c "[ ! -e '$SF_PATH/../fm-rpctest-zipslip' ] && [ ! -e '$SF_PATH/fm-rpctest-zipslip' ] && [ ! -e /tmp/fm-rpctest-zipslip-abs ]"
 assert_rpc_fails "extract — not an archive" "FileManager" "extract" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/a.txt")\"}" "not a supported archive"
+if command -v bsdtar &>/dev/null; then
+    (cd "$TEST_DIR" && bsdtar --format 7zip -cf seven.7z sub && \
+        bsdtar --format iso9660 -cf disc.iso sub) 2>/dev/null
+    assert_bg "extract — 7z" "extract" \
+        "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/seven.7z")\"}" ok "Extracted to 'seven'" >/dev/null
+    check "extract — 7z contents" test "$(cat "$TEST_DIR/seven/sub/foo.log")" = "hello"
+    check "extract — 7z contents owned like the parent" \
+        test "$(stat -c '%U:%G' "$TEST_DIR/seven/sub/foo.log")" = "nobody:users"
+    assert_bg "extract — ISO" "extract" \
+        "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/disc.iso")\"}" ok >/dev/null
+    check "extract — ISO contents" \
+        bash -c "cat '$TEST_DIR/disc/'[sS][uU][bB]/[fF][oO][oO].[lL][oO][gG]* | grep -q hello"
+    # A 7z archive with a member escaping the target folder.
+    printf 'x' > "$TEST_DIR/slip.txt"
+    (cd "$TEST_DIR" && bsdtar --format 7zip -P -s ',^slip.txt$,../../fm-rpctest-7zslip,' \
+        -cf slip.7z slip.txt) 2>/dev/null
+    if bsdtar -tf "$TEST_DIR/slip.7z" 2>/dev/null | grep -q '^\.\./'; then
+        assert_bg "extract — malicious 7z refused" "extract" \
+            "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/slip.7z")\"}" fail >/dev/null
+        check "extract — 7z slip contained" \
+            bash -c "[ ! -e '$SF_PATH/fm-rpctest-7zslip' ] && [ ! -e '$TEST_DIR/../fm-rpctest-7zslip' ]"
+    else
+        info "Could not create a malicious 7z archive — 7z slip check skipped"
+    fi
+    rm -f "$TEST_DIR/slip.txt"
+    OUT=$(rpc "FileManager" "getList" "$(list_params "$T")" 2>/dev/null || echo '{"data":[]}')
+    check "getList — 7z and ISO marked as archives" \
+        test "$(echo "$OUT" | jq -r '[.data[] | select(.name == "seven.7z" or .name == "disc.iso") | .archive] | join(",")')" = "true,true"
+else
+    info "bsdtar not installed — 7z/ISO extraction skipped"
+fi
 
 # ===========================================================================
 section "Symlinks out of the shared folder"
@@ -801,6 +913,28 @@ assert_rpc_fails "checksum — unknown algorithm rejected" "FileManager" "checks
     "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/a.txt")\",\"algorithm\":\"crc32\"}"
 assert_rpc_fails "checksum — symlink escaping the shared folder" "FileManager" "checksum" \
     "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/leak")\",\"algorithm\":\"sha256\"}" "escapes"
+
+# ===========================================================================
+section "Disk usage"
+# ===========================================================================
+
+# Larger than big.txt (1 MiB), the largest item so far.
+head -c 3000000 /dev/zero > "$TEST_DIR/sub/large.bin"
+USAGE=$(mktemp)
+STAGED+=("$USAGE")
+assert_bg "diskUsage — test folder" "diskUsage" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\"}" ok "Total:" > "$USAGE"
+check "diskUsage — largest item (sub/ with 3 MB) first" \
+    bash -c "grep -E '%  [#.]{20}  ' '$USAGE' | head -1 | grep -qE '  sub/\$'"
+check "diskUsage — folders marked with a slash" grep -qE '  sub/$' "$USAGE"
+check "diskUsage — files listed" grep -qE '  pic\.png$' "$USAGE"
+check "diskUsage — partial uploads not listed" bash -c "! grep -q fmpart '$USAGE'"
+check "diskUsage — symlinks not followed" bash -c "! grep -qE '  escape/' '$USAGE'"
+assert_rpc_fails "diskUsage — file refused" "FileManager" "diskUsage" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/a.txt")\"}" "not a folder"
+assert_rpc_fails "diskUsage — symlink escaping the shared folder" "FileManager" "diskUsage" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/escape")\"}" "escapes"
+rm -f "$TEST_DIR/sub/large.bin"
 
 # ===========================================================================
 section "Download & preview"
@@ -954,6 +1088,27 @@ assert_rpc "delete — symlink" "FileManager" "delete" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/sublink2")\"}" >/dev/null
 check "delete — only the link was trashed" \
     bash -c "[ -L '$TR/sublink2' ] && [ -d '$TEST_DIR/sub' ]"
+assert_rpc "delete — folder to trash" "FileManager" "delete" \
+    "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/arch (2)")\"}" >/dev/null
+assert_rpc "getTrashList" "FileManager" "getTrashList" "$GETLIST" && {
+    ROW=$(echo "$OUT" | jq -c --arg u "$SF_UUID" --arg l "/$T" \
+        '.data[] | select(.uuid == $u and .location == $l and .name == "arch (2)")')
+    check "getTrashList — deleted folder listed once, as folder" \
+        test "$(echo "$ROW" | jq -r '"\(.type) \(.user) \(.sharename)"')" = "dir admin $SF_NAME"
+    jcheck "getTrashList — contents of a deleted folder not listed" "$OUT" \
+        '(any(.data[]; .location | startswith($l))) | not' --arg l "/$T/arch (2)"
+    jcheck "getTrashList — deleted symlink listed as link" "$OUT" \
+        'any(.data[]; .name == "sublink2" and .type == "link")'
+    jcheck "getTrashList — item whose original exists again marked as conflict" "$OUT" \
+        'any(.data[]; .name == "up.txt" and .location == $l and .conflict == true)' --arg l "/$T"
+    jcheck "getTrashList — original folder token" "$OUT" \
+        'any(.data[]; .name == "arch (2)" and .origdir == $t)' --arg t "$(tok "$T")"
+    check "getTrashList — deletion time is recent" \
+        test "$(( $(date +%s) - $(echo "$ROW" | jq -r '.deleted') ))" -lt 600
+    assert_rpc "restore — via the trash list" "FileManager" "restore" \
+        "{\"uuid\":\"$SF_UUID\",\"path\":\"$(echo "$ROW" | jq -r '.path')\"}" >/dev/null
+    check "restore — folder back in place" test -f "$TEST_DIR/arch (2)/sub/foo.log"
+}
 printf 'x' > "$TEST_DIR/nl"$'\n'"name"
 assert_rpc "delete — name with newline" "FileManager" "delete" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/nl"$'\n'"name")\"}" >/dev/null
@@ -972,13 +1127,181 @@ check "delete — trash disabled deletes" \
 set_settings '.'
 assert_rpc_fails "delete — shared folder root" "FileManager" "delete" \
     "{\"uuid\":\"$SF_UUID\",\"path\":\"root\",\"permanent\":true}"
+assert_bg "purgeTrash — disabled by default" "purgeTrash" '{}' ok "disabled" >/dev/null
 if ! $TRASH_EXISTED; then
+    set_settings '.trashretention = 1'
+    assert_bg "purgeTrash — recent items kept" "purgeTrash" \
+        "{\"uuid\":\"$SF_UUID\"}" ok "Deleted 0 item" >/dev/null
+    check "purgeTrash — trash unchanged" test -L "$TR/sublink2"
+    set_settings '.'
+    sleep 2
+    assert_bg "purgeTrash — all items older than 0 days" "purgeTrash" \
+        "{\"uuid\":\"$SF_UUID\",\"days\":0}" ok "Deleted [1-9][0-9]* item" >/dev/null
+    check "purgeTrash — items and empty containers removed" \
+        bash -c "[ ! -e '$TR' ] && [ -d '$SF_PATH/.recycle/admin' ]"
+    OUT=$(rpc "FileManager" "getTrashList" "$GETLIST" 2>/dev/null || echo '{"data":[]}')
+    jcheck "getTrashList — empty after purge" "$OUT" \
+        '(any(.data[]; .uuid == $u)) | not' --arg u "$SF_UUID"
     assert_rpc "emptyTrash" "FileManager" "emptyTrash" "{\"uuid\":\"$SF_UUID\"}" >/dev/null
     check "emptyTrash — trash is empty" \
         test -z "$(ls -A "$SF_PATH/.recycle" 2>/dev/null)"
 else
-    info "emptyTrash skipped — '$SF_PATH/.recycle' existed before the test"
+    info "purgeTrash and emptyTrash skipped — '$SF_PATH/.recycle' existed before the test"
 fi
+assert_rpc_fails "purgeTrash — negative days rejected" "FileManager" "purgeTrash" \
+    '{"days":-1}'
+
+# ===========================================================================
+section "Share links"
+# ===========================================================================
+
+SHARE_UNIT=openmediavault-filemanager-share.service
+SHARE_BASE="http://127.0.0.1:$SHARE_PORT/s"
+EXPORT=/var/lib/openmediavault-filemanager/share-export.json
+CURL=(curl -s --max-time 20)
+mklinkp() {  # $1 path, [$2 password], [$3 max downloads], [$4 days]
+    echo "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$1")\",\"expires\":${4:-1},\"password\":\"${2:-}\",\"maxdownloads\":${3:-0}}"
+}
+# Create a share link and echo its token.
+share() {
+    local out token
+    out=$(omv-rpc -u "$RPC_USER" "FileManager" "createShareLink" "$(mklinkp "$@")" 2>/dev/null) || return 1
+    token=$(echo "$out" | jq -r '.token')
+    [ -n "$token" ] && [ "$token" != "null" ] || return 1
+    SHARE_TOKENS+=("$token")
+    echo "$token"
+}
+http_status() { "${CURL[@]}" -o /dev/null -w '%{http_code}' "$@"; }
+downloads() {
+    omv-rpc -u admin "FileManager" "getShareLinkList" "$GETLIST" 2>/dev/null \
+        | jq -r --arg t "$1" '.data[] | select(.token == $t) | "\(.downloads) \(.status)"'
+}
+
+assert_rpc_fails "createShareLink — refused while disabled" "FileManager" "createShareLink" \
+    "$(mklinkp "$T/pic.png")" "disabled"
+check "share server — not running while disabled" \
+    bash -c "! systemctl --quiet is-active $SHARE_UNIT"
+set_settings '.sharelinks = true'
+check "share server — running when enabled" systemctl --quiet is-active "$SHARE_UNIT"
+MAIN_PID=$(systemctl show -p MainPID --value "$SHARE_UNIT")
+CHILD_PID=$(pgrep -P "$MAIN_PID" | head -1)
+check "share server — HTTP process runs as omv-fm-share" \
+    test "$(stat -c %U "/proc/$CHILD_PID" 2>/dev/null)" = "omv-fm-share"
+check "share server — HTTP process is chrooted to an empty folder" \
+    test "$(readlink "/proc/$CHILD_PID/root" 2>/dev/null)" = "/run/openmediavault-filemanager-share/empty"
+check "share server — HTTP process has no capabilities" \
+    bash -c "grep -E '^Cap(Eff|Prm):' /proc/$CHILD_PID/status | grep -qvE '0{16}' && exit 1 || exit 0"
+check "share server — only the HTTP process listens on the port" \
+    bash -c "ss -Hltnp 'sport = :$SHARE_PORT' | grep -q 'pid=$CHILD_PID,' && ! ss -Hltnp 'sport = :$SHARE_PORT' | grep -q 'pid=$MAIN_PID,'"
+check "share server — broker has no sockets to the network" \
+    bash -c "! ss -Htunap | grep -q 'pid=$MAIN_PID,'"
+check "share server — export readable by root only" \
+    test "$(stat -c '%U %a' "$EXPORT")" = "root 600"
+
+if TOK=$(share "$T/pic.png"); then
+    _pass "createShareLink — file"
+    OUT=$(omv-rpc -u admin "FileManager" "getShareLinkList" "$GETLIST")
+    jcheck "getShareLinkList — link listed" "$OUT" \
+        'any(.data[]; .token == $t and .status == "active" and .protected == false and .type == "file" and .name == "pic.png")' --arg t "$TOK"
+    jcheck "getShareLinkList — URL with the share port" "$OUT" \
+        'any(.data[]; .token == $t and (.url | test(":" + $p + "/s/" + $t + "$")))' --arg t "$TOK" --arg p "$SHARE_PORT"
+    check "share export — contains the link" jq -e --arg t "$TOK" '.links[$t].path' "$EXPORT"
+    check "share server — landing page" test "$(http_status "$SHARE_BASE/$TOK")" = 200
+    DL=$(mktemp); STAGED+=("$DL")
+    HDR=$("${CURL[@]}" -D - -o "$DL" "$SHARE_BASE/$TOK?dl=1")
+    check "share server — file downloaded" cmp -s "$DL" "$TEST_DIR/pic.png"
+    check "share server — sent as attachment" bash -c "echo \"\$0\" | grep -qi '^content-disposition: attachment'" "$HDR"
+    check "share server — no referrer" bash -c "echo \"\$0\" | grep -qi '^referrer-policy: no-referrer'" "$HDR"
+    check "share server — download counted" test "$(downloads "$TOK")" = "1 active"
+    check "share server — unknown link" test "$(http_status "$SHARE_BASE/AAAAAAAAAAAAAAAAAAAAAA")" = 404
+    check "share server — nothing else served" test "$(http_status "http://127.0.0.1:$SHARE_PORT/")" = 404
+else
+    _fail "createShareLink — file"
+fi
+
+if TOK=$(share "$T/a.txt" "pw-$$" 1); then
+    _pass "createShareLink — with password and download limit"
+    JAR=$(mktemp); STAGED+=("$JAR")
+    check "share server — password required" test "$(http_status "$SHARE_BASE/$TOK?dl=1")" = 401
+    check "share server — wrong password" \
+        test "$(http_status -d "password=wrong" "$SHARE_BASE/$TOK")" = 401
+    check "share server — right password" \
+        test "$(http_status -c "$JAR" -d "password=pw-$$" "$SHARE_BASE/$TOK")" = 303
+    check "share server — download with session" \
+        test "$("${CURL[@]}" -b "$JAR" "$SHARE_BASE/$TOK?dl=1")" = "$(cat "$TEST_DIR/a.txt")"
+    check "share server — download limit reached" \
+        test "$(http_status -b "$JAR" "$SHARE_BASE/$TOK?dl=1")" = 410
+    check "getShareLinkList — link used up" test "$(downloads "$TOK")" = "1 exhausted"
+    check "share export — password stored hashed" \
+        jq -e --arg t "$TOK" '.links[$t].password | startswith("pbkdf2_sha256$")' "$EXPORT"
+    check "share links — password not stored in plain text" \
+        bash -c "! grep -qF 'pw-$$' '$EXPORT' /var/lib/openmediavault-filemanager/sharelinks.json"
+else
+    _fail "createShareLink — with password and download limit"
+fi
+
+if TOK=$(share "$T/sub"); then
+    _pass "createShareLink — folder"
+    check "share server — folder redirects to a trailing slash" \
+        test "$(http_status "$SHARE_BASE/$TOK")" = 301
+    check "share server — folder listing" \
+        bash -c "${CURL[*]} '$SHARE_BASE/$TOK/' | grep -q 'foo.log'"
+    check "share server — file in folder" \
+        test "$("${CURL[@]}" "$SHARE_BASE/$TOK/foo.log?dl=1")" = "hello"
+    ZIPF=$(mktemp); STAGED+=("$ZIPF")
+    "${CURL[@]}" -o "$ZIPF" "$SHARE_BASE/$TOK/?zip=1"
+    check "share server — folder as ZIP" \
+        python3 -c "import sys,zipfile; sys.exit('sub/foo.log' not in zipfile.ZipFile('$ZIPF').namelist())"
+    for p in "..%2Fa.txt" "../a.txt" "%2E%2E/a.txt"; do
+        check "share server — traversal '$p' refused" \
+            bash -c "[ \"\$(${CURL[*]} -o /dev/null -w '%{http_code}' --path-as-is '$SHARE_BASE/$TOK/$p?dl=1')\" != 200 ]"
+    done
+    ln -s "$OUTSIDE_DIR/secret" "$TEST_DIR/sub/leak2"
+    check "share server — symlink in a shared folder not followed" \
+        test "$(http_status "$SHARE_BASE/$TOK/leak2?dl=1")" = 404
+    rm -f "$TEST_DIR/sub/leak2"
+else
+    _fail "createShareLink — folder"
+fi
+
+assert_rpc_fails "createShareLink — symlink escaping the shared folder" "FileManager" \
+    "createShareLink" "$(mklinkp "$T/escape")" "escapes"
+mkdir -p "$SF_PATH/.recycle/admin"
+printf 'x' > "$SF_PATH/.recycle/admin/$TEST_NAME-trashed"
+assert_rpc_fails "createShareLink — item in the trash" "FileManager" "createShareLink" \
+    "$(mklinkp ".recycle/admin/$TEST_NAME-trashed")" "trash"
+rm -f "$SF_PATH/.recycle/admin/$TEST_NAME-trashed"
+assert_rpc_fails "createShareLink — negative expiry rejected" "FileManager" "createShareLink" \
+    "$(mklinkp "$T/pic.png" "" 0 -1)"
+
+printf 'gone' > "$TEST_DIR/gone.txt"
+if TOK=$(share "$T/gone.txt"); then
+    rm -f "$TEST_DIR/gone.txt"
+    check "share server — removed file not served" test "$(http_status "$SHARE_BASE/$TOK?dl=1")" = 404
+    printf 'evil' > "$OUTSIDE_DIR/evil"
+    ln -s "$OUTSIDE_DIR/evil" "$TEST_DIR/gone.txt"
+    check "share server — file replaced by a symlink not served" \
+        test "$(http_status "$SHARE_BASE/$TOK?dl=1")" = 404
+    rm -f "$TEST_DIR/gone.txt"
+    assert_rpc "deleteShareLink" "FileManager" "deleteShareLink" "{\"token\":\"$TOK\"}" >/dev/null
+    check "share export — deleted link removed" \
+        bash -c "! jq -e --arg t '$TOK' '.links[\$t]' '$EXPORT' >/dev/null"
+fi
+assert_rpc_fails "deleteShareLink — unknown link" "FileManager" "deleteShareLink" \
+    '{"token":"AAAAAAAAAAAAAAAAAAAAAA"}' "does not exist"
+assert_rpc_fails "deleteShareLink — invalid token" "FileManager" "deleteShareLink" \
+    '{"token":"../../etc"}'
+assert_rpc "syncShareLinks" "FileManager" "syncShareLinks" >/dev/null
+sleep 1
+check "audit log — share link downloads logged by the share server" \
+    bash -c "journalctl --quiet --no-pager SYSLOG_IDENTIFIER=omv-filemanager --since '$START_TS' --output=cat | grep -qF '[link:admin] share-download: $SF_NAME:/$T/pic.png (from 127.0.0.1)'"
+check "audit log — failed share link passwords logged" \
+    bash -c "journalctl --quiet --no-pager SYSLOG_IDENTIFIER=omv-filemanager --since '$START_TS' --output=cat | grep -qF '[link:admin] share-auth-failed: $SF_NAME:/$T/a.txt'"
+set_settings '.'
+check "share server — stopped when disabled" \
+    bash -c "! systemctl --quiet is-active $SHARE_UNIT"
+check "share export — no links while disabled" \
+    test "$(jq '.links | length' "$EXPORT")" = 0
 
 # ===========================================================================
 section "Audit log"
@@ -988,7 +1311,8 @@ sleep 1
 LOG=$(journalctl --quiet --no-pager SYSLOG_IDENTIFIER=omv-filemanager \
     --since "$START_TS" --output=cat 2>/dev/null || true)
 for action in mkdir mkfile rename edit copy move compress extract chmod chown \
-        download preview upload trash restore delete; do
+        download preview upload trash restore delete duplicate symlink \
+        sharelink-create sharelink-delete; do
     check "audit log — '$action' entry" \
         bash -c "echo \"\$0\" | grep -q '^\[admin\] $action: $SF_NAME:/$T'" "$LOG"
 done
@@ -1085,6 +1409,41 @@ else
         "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"query\":\"p.txt\",\"start\":0,\"limit\":null}" && \
         jcheck "user — search skips folders without permission" "$OUT" \
             '(any(.data[]; .location == $l)) | not' --arg l "/$T/private"
+    RPC_USER="admin"
+    set_settings '.allowusers = true | .sharelinks = true'
+    ADMIN_TOK=$(share "$T/pic.png")
+    RPC_USER="$TEST_USER"
+    assert_rpc_fails "user — share links refused while not allowed for users" "FileManager" \
+        "createShareLink" "$(mklinkp "$T/public.txt")" "administrators"
+    set_settings '.allowusers = true | .sharelinks = true | .shareusers = true'
+    if UTOK=$(share "$T/public.txt"); then
+        _pass "user — createShareLink"
+        check "user — link served" test "$("${CURL[@]}" "$SHARE_BASE/$UTOK?dl=1")" = "public"
+        check "share export — user link carries the user's IDs" \
+            test "$(jq -r --arg t "$UTOK" '.links[$t].creds.uid' "$EXPORT")" = "$(id -u "$TEST_USER")"
+        chmod 600 "$TEST_DIR/public.txt"
+        check "user — file the user may no longer read not served" \
+            test "$(http_status "$SHARE_BASE/$UTOK?dl=1")" = 404
+        chmod 644 "$TEST_DIR/public.txt"
+        OUT=$(rpc "FileManager" "getShareLinkList" "$GETLIST" 2>/dev/null || echo '{"data":[]}')
+        jcheck "user — getShareLinkList shows only own links" "$OUT" \
+            'all(.data[]; .creator == $u) and any(.data[]; .token == $t)' --arg u "$TEST_USER" --arg t "$UTOK"
+        assert_rpc_fails "user — cannot delete links of others" "FileManager" "deleteShareLink" \
+            "{\"token\":\"$ADMIN_TOK\"}" "own"
+        RPC_USER="admin"
+        set_settings '.allowusers = false | .sharelinks = true | .shareusers = true'
+        check "user — links dropped when users lose access" \
+            test "$(http_status "$SHARE_BASE/$UTOK?dl=1")" = 404
+        set_settings '.allowusers = true | .sharelinks = true | .shareusers = true'
+        RPC_USER="$TEST_USER"
+    else
+        _fail "user — createShareLink"
+    fi
+    assert_rpc_fails "user — share link to an unreadable file" "FileManager" "createShareLink" \
+        "$(mklinkp "$T/private.txt")" "permission denied"
+    RPC_USER="admin"
+    set_settings '.allowusers = true'
+    RPC_USER="$TEST_USER"
     if [ "$USER_PERMS" = "7" ]; then
         assert_rpc_fails "user — mkDir in folder without permission" "FileManager" "mkDir" \
             "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/private")\",\"name\":\"x\"}" \
@@ -1109,6 +1468,16 @@ else
             "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/user.txt")\"}" >/dev/null
         check "user — trashed to .recycle/$TEST_USER/" \
             test -f "$SF_PATH/.recycle/$TEST_USER/$T/user.txt"
+        assert_rpc "user — getTrashList" "FileManager" "getTrashList" "$GETLIST" && \
+            jcheck "user — trash list shows only own items" "$OUT" \
+                'all(.data[]; .user == $u) and any(.data[]; .name == "user.txt")' --arg u "$TEST_USER"
+        assert_bg "user — duplicate folder with protected contents refused" "duplicate" \
+            "{\"uuid\":\"$SF_UUID\",\"paths\":\"$(tok "$T/private")\"}" fail >/dev/null
+        assert_rpc_fails "user — symlink in folder without permission" "FileManager" "mkLink" \
+            "$(mklink "$T/public.txt" "$T/private" "x")" "permission denied"
+        assert_bg "user — disk usage of folder without permission" "diskUsage" \
+            "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T/private")\"}" fail >/dev/null
+        assert_rpc_fails "user — purgeTrash is admin only" "FileManager" "purgeTrash" '{}' 
     else
         assert_rpc_fails "user — mkFile refused on read-only share" "FileManager" "mkFile" \
             "{\"uuid\":\"$SF_UUID\",\"path\":\"$(tok "$T")\",\"name\":\"user.txt\"}" "read access"
